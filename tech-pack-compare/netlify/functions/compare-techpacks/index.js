@@ -1,12 +1,5 @@
-function normalizeLine(line) {
-  return String(line || '').replace(/\s+/g, ' ').trim();
-}
-
-function toLines(text) {
-  return String(text || '')
-    .split(/\n+/)
-    .map(normalizeLine)
-    .filter(line => line.length >= 3);
+function stripDataUrlPrefix(dataUrl = '') {
+  return String(dataUrl).replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
 }
 
 function safeJsonParse(text) {
@@ -25,119 +18,79 @@ function safeJsonParse(text) {
   }
 }
 
-function inferSection(text = '') {
-  const t = text.toLowerCase();
-  if (/neck|chest|waist|hip|sleeve|length|width|measure|pom|spec/.test(t)) return 'Measurement Specs';
-  if (/fabric|lining|trim|button|zipper|label|hangtag|packaging|polybag|bom/.test(t)) return 'BOM / Labels / Packing';
-  if (/stitch|seam|construction|topstitch|reinforcement|finish/.test(t)) return 'Construction Notes';
-  if (/sketch|artwork|print|graphic|colorway/.test(t)) return 'Artwork / Style Info';
-  return 'General';
-}
-
-function inferImpact(text = '') {
-  const t = text.toLowerCase();
-  if (/neck|chest|waist|hip|sleeve|length|width|measure|pom|spec|fabric|label|care|wash/.test(t)) return 'high';
-  if (/stitch|construction|trim|pack|polybag|finish|note/.test(t)) return 'medium';
-  return 'low';
-}
-
-function buildFallbackDiff(textA, textB, comments = '') {
-  const linesA = toLines(textA);
-  const linesB = toLines(textB);
-  const setA = new Set(linesA);
-  const setB = new Set(linesB);
-  const removed = linesA.filter(line => !setB.has(line)).slice(0, 8);
-  const added = linesB.filter(line => !setA.has(line)).slice(0, 8);
-  const differences = [];
-  const max = Math.max(removed.length, added.length);
-
-  for (let i = 0; i < max; i++) {
-    const before = removed[i] || '';
-    const after = added[i] || '';
-    const combined = `${before} ${after}`.trim();
-    differences.push({
-      section: inferSection(combined),
-      before,
-      after,
-      impact: inferImpact(combined)
-    });
-  }
-
+function fallbackVisionResult({ pageA, pageB, comments }) {
   const buyerComments = String(comments || '')
     .split(/\n+/)
     .map(v => v.trim())
     .filter(Boolean)
     .slice(0, 8);
 
-  const actionItems = buyerComments.length
-    ? buyerComments.map(line => `Follow up: ${line}`)
-    : differences.slice(0, 5).map(item => `Review ${item.section}: compare updated requirement with previous version.`);
-
-  const highCount = differences.filter(d => d.impact === 'high').length;
-
   return {
-    mode: 'fallback_basic_diff',
+    mode: 'vision_skeleton_fallback',
     result: {
-      summary: {
-        overview: `${differences.length} basic difference item(s) found between Tech Pack A and B.`,
-        risk_level: highCount >= 2 ? 'high' : highCount === 1 ? 'medium' : 'low'
-      },
-      differences,
-      buyer_comments: buyerComments,
-      action_items: actionItems
+      summary: `Image review fallback mode. Preview pages A${pageA} and B${pageB} were received successfully.`,
+      visible_comments: buyerComments,
+      visual_changes: [
+        { area: `Page ${pageA} vs Page ${pageB}`, note: 'Image-based compare pipeline is connected; visual reasoning fallback is active.', impact: 'medium' }
+      ],
+      action_items: [
+        'Review preview images manually for marked-up areas.',
+        'Verify buyer image comments against sketch and artwork pages.',
+        'Connect full vision response parsing for production use.'
+      ]
     }
   };
 }
 
-async function callPerplexity({ textA, textB, comments }) {
+async function callPerplexityVision({ imageA, imageB, pageA, pageB, comments }) {
   const apiKey = process.env.PERPLEXITY_API_KEY;
   if (!apiKey) throw new Error('Missing PERPLEXITY_API_KEY');
 
-  const prompt = `You are a professional garment merchandising and tech pack comparison assistant.
-Your audience is apparel factory Sales and Merchandisers.
-Focus on production-relevant and follow-up-relevant differences only.
+  const prompt = `You are an apparel tech pack image review assistant for factory Sales and Merchandisers.
+You are comparing two tech pack page images.
 
-A good fashion tech pack commonly includes BOM, measurement specs, labels, packaging, construction notes, sketches, and style details, so compare with those areas in mind. Also, merchandisers rely on strong follow-up to control deadlines, sample progress, approvals, and buyer communication. [web:126][web:127][web:128][web:129][web:134]
+Tasks:
+1. Read any visible comments, callouts, labels, arrows, circled notes, and marked-up instructions from both images.
+2. Identify the main visual changes between page ${pageA} and page ${pageB}.
+3. Focus on garment-relevant details: sketch changes, label placement, packaging notes, construction marks, measurement callouts, artwork notes, and customer markups.
+4. Merge any useful context from buyer comments if provided.
 
-Task:
-1. Compare Tech Pack A and Tech Pack B.
-2. Identify the most important differences only.
-3. Classify each difference into a practical section for apparel teams.
-4. Review buyer comments if provided.
-5. Return follow-up actions that Sales / Merchandisers should do next.
-
-Return strict JSON only, with this exact shape:
+Return strict JSON only in this exact format:
 {
-  "summary": {
-    "overview": "string",
-    "risk_level": "high|medium|low"
-  },
-  "differences": [
+  "summary": "string",
+  "visible_comments": ["string"],
+  "visual_changes": [
     {
-      "section": "Style Info|Measurement Specs|BOM / Labels / Packing|Construction Notes|Artwork / Colorway|General",
-      "before": "string",
-      "after": "string",
+      "area": "string",
+      "note": "string",
       "impact": "high|medium|low"
     }
   ],
-  "buyer_comments": ["string"],
   "action_items": ["string"]
 }
 
 Rules:
-- Be concise and practical.
-- Prefer differences that affect sample development, fit, labeling, packing, costing, or buyer approval.
-- Ignore noise and repeated boilerplate where possible.
-- Use empty arrays if nothing is found.
+- Keep output concise and practical.
+- If a comment is partially visible, still summarize it carefully.
+- Prefer business-usable findings over generic image description.
+- Use empty arrays if nothing is clearly visible.
 
-Tech Pack A:
-${textA.slice(0, 18000)}
+Buyer comments:\n${String(comments || '').slice(0, 4000)}`;
 
-Tech Pack B:
-${textB.slice(0, 18000)}
-
-Buyer Comments:
-${(comments || '').slice(0, 6000)}`;
+  const payload = {
+    model: 'sonar-pro',
+    temperature: 0.1,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${stripDataUrlPrefix(imageA)}` } },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${stripDataUrlPrefix(imageB)}` } }
+        ]
+      }
+    ]
+  };
 
   const response = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
@@ -145,29 +98,22 @@ ${(comments || '').slice(0, 6000)}`;
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      model: 'sonar',
-      temperature: 0.2,
-      messages: [
-        { role: 'system', content: 'You compare apparel tech pack revisions and return JSON only.' },
-        { role: 'user', content: prompt }
-      ]
-    })
+    body: JSON.stringify(payload)
   });
 
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || data.error || 'Perplexity API request failed');
-
-  const content = data?.choices?.[0]?.message?.content?.trim();
-  if (!content) throw new Error('Empty response from Perplexity');
-
-  const parsed = safeJsonParse(content);
-  if (!parsed) {
-    throw new Error('Perplexity response was not valid JSON');
+  if (!response.ok) {
+    throw new Error(data.error?.message || data.error || 'Image analysis request failed');
   }
 
+  const content = data?.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error('Empty image analysis response');
+
+  const parsed = safeJsonParse(content);
+  if (!parsed) throw new Error('Vision response was not valid JSON');
+
   return {
-    mode: 'perplexity_api',
+    mode: 'perplexity_vision',
     model: data.model,
     usage: data.usage || null,
     result: parsed,
@@ -182,22 +128,23 @@ export default async (request) => {
     }
 
     const body = await request.json();
-    const textA = String(body.textA || '');
-    const textB = String(body.textB || '');
+    const imageA = String(body.imageA || '');
+    const imageB = String(body.imageB || '');
+    const pageA = Number(body.pageA || 1);
+    const pageB = Number(body.pageB || 1);
     const comments = String(body.comments || '');
 
-    if (!textA || !textB) {
-      return Response.json({ error: 'textA and textB are required' }, { status: 400 });
+    if (!imageA || !imageB) {
+      return Response.json({ error: 'imageA and imageB are required' }, { status: 400 });
     }
 
     try {
-      const aiResult = await callPerplexity({ textA, textB, comments });
-      return Response.json({ ok: true, ...aiResult });
-    } catch (apiError) {
-      const fallback = buildFallbackDiff(textA, textB, comments);
-      return Response.json({ ok: true, warning: apiError.message, ...fallback });
+      const result = await callPerplexityVision({ imageA, imageB, pageA, pageB, comments });
+      return Response.json({ ok: true, ...result });
+    } catch (error) {
+      return Response.json({ ok: true, warning: error.message, ...fallbackVisionResult({ pageA, pageB, comments }) });
     }
   } catch (error) {
-    return Response.json({ error: error.message || 'Compare failed' }, { status: 500 });
+    return Response.json({ error: error.message || 'Image analysis failed' }, { status: 500 });
   }
 };

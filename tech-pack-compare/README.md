@@ -1,47 +1,33 @@
 # Tech Pack Compare Skeleton
 
-This version upgrades the Netlify skeleton to:
+This version adds an **image analysis skeleton** on top of the existing text compare flow.
 
-- wire frontend PDF upload to the `compare-techpacks` function
-- keep API keys server-side in Netlify Functions
-- call the Perplexity API from the function, similar to the user's AI Meeting project pattern
+## What is new
 
-## Structure
+- Browser renders selected PDF pages to PNG previews with PDF.js
+- Frontend sends preview images to a new Netlify function: `analyze-techpack-images`
+- New function prepares an image-based compare flow for future multimodal / vision support
+- Current implementation includes a safe fallback response if image-capable analysis is not available yet
 
-- `public/index.html` — UI
-- `public/app.js` — PDF upload, PDF.js text extraction, function calls
-- `netlify/functions/health/index.js` — health check
-- `netlify/functions/compare-techpacks/index.js` — Perplexity-backed compare endpoint
-- `netlify/functions/extract-comments/index.js` — starter comment extraction endpoint
-- `package.json`
-- `netlify.toml`
+## Why this matters
 
-## Required environment variable
+Some buyer comments in apparel tech packs appear as marked-up sketches, arrows, circled areas, or image-based notes. Text extraction alone will miss those.
 
-Set this in Netlify site settings, with Functions scope enabled:
+## Current flow
 
-```bash
-PERPLEXITY_API_KEY=your_api_key_here
-```
+1. Upload PDF A and PDF B
+2. Browser extracts text for text compare
+3. Browser renders selected page(s) into PNG preview images using PDF.js canvas rendering
+4. Frontend sends `imageA`, `imageB`, `pageA`, `pageB`, and `comments` to `/.netlify/functions/analyze-techpack-images`
+5. Function returns a skeleton image-analysis result
 
-Netlify environment variables must be configured in the Netlify UI, CLI, or API for function runtime use; values declared in `netlify.toml` are not available to functions at runtime.
+## Current limitation
 
-## Local dev
+This is a scaffold, not a finished vision compare feature. The image function is prepared for future multimodal API connection, but currently uses a fallback path if the image-capable API request is not supported or configured.
 
-```bash
-npm install
-npm run dev
-```
+## Relevant files
 
-## Request flow
-
-1. User uploads PDF A and PDF B in the browser
-2. Browser extracts text with PDF.js
-3. Frontend sends `textA`, `textB`, and `comments` to `/.netlify/functions/compare-techpacks`
-4. Netlify Function calls Perplexity API
-5. Function returns JSON to frontend
-
-## Current behavior
-
-- If `PERPLEXITY_API_KEY` exists and the API returns valid content, the function returns AI compare output.
-- If the key is missing or API parsing fails, the function falls back to basic line diff output so demo testing can continue.
+- `public/index.html`
+- `public/app.js`
+- `netlify/functions/analyze-techpack-images/index.js`
+- `netlify/functions/compare-techpacks/index.js`
