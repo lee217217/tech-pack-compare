@@ -1,0 +1,15 @@
+{
+  "name": "techpack-compare-skeleton",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev",
+    "serve": "npx serve public",
+    "start": "netlify dev"
+  },
+  "devDependencies": {
+    "netlify-cli": "^17.38.1",
+    "serve": "^14.2.3"
+  }
+}

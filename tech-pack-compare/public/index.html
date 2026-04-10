@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tech Pack Compare Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root,[data-theme="light"]{--bg:#f6f4ef;--surface:#fffdf9;--surface-2:#f1ece4;--border:#ddd4c7;--text:#1f1b17;--muted:#6e655d;--primary:#0c6c73;--primary-soft:#d7ebed;--shadow:0 18px 44px rgba(41,33,24,.08)}
+    [data-theme="dark"]{--bg:#151310;--surface:#1d1b17;--surface-2:#26231e;--border:#3f3931;--text:#efe7dd;--muted:#b2a79c;--primary:#6db0b7;--primary-soft:#24393c;--shadow:0 20px 48px rgba(0,0,0,.28)}
+    *{box-sizing:border-box}body{margin:0;font-family:'Inter',sans-serif;background:linear-gradient(180deg,var(--bg),var(--surface-2));color:var(--text)}button,input,textarea{font:inherit}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 24px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg) 86%, transparent);backdrop-filter:blur(14px);position:sticky;top:0;z-index:10}
+    .brand{display:flex;align-items:center;gap:14px}.mark{width:44px;height:44px;border-radius:14px;background:var(--text);color:var(--surface);display:grid;place-items:center;font-weight:800}.brand h1{margin:0;font-size:18px}.brand p{margin:5px 0 0;font-size:13px;color:var(--muted)}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap}.btn,.pill{padding:10px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text)}.btn{cursor:pointer;font-weight:700}.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}.pill{font-size:12px;color:var(--muted)}
+    .page{max-width:1400px;margin:0 auto;padding:24px;display:grid;gap:20px}.hero,.layout{display:grid;grid-template-columns:1.05fr .95fr;gap:20px}.card{background:color-mix(in srgb,var(--surface) 94%, transparent);border:1px solid var(--border);border-radius:28px;box-shadow:var(--shadow)}.panel{padding:24px}
+    .eyebrow{display:inline-flex;padding:8px 12px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:12px;font-weight:800;margin-bottom:16px}h2{margin:0;font-size:clamp(30px,4vw,50px);line-height:1.02;max-width:12ch}.muted{color:var(--muted);line-height:1.6}
+    .hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.stat{padding:18px;border:1px solid var(--border);border-radius:20px;background:var(--surface)}.stat span{display:block;color:var(--muted);font-size:13px;margin-bottom:8px;font-weight:700}.stat strong{font-size:28px}
+    .section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}.section-head h3{margin:0;font-size:20px}.section-head p{margin:6px 0 0;color:var(--muted);font-size:14px}
+    .upload-grid,.preview-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.drop{position:relative;min-height:220px;border:1.5px dashed color-mix(in srgb,var(--primary) 28%, var(--border));border-radius:20px;padding:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));display:flex;flex-direction:column;justify-content:space-between;gap:12px}.drop.dragover{border-color:var(--primary)}
+    .drop input{position:absolute;inset:0;opacity:0;cursor:pointer}.file-chip{display:inline-flex;padding:8px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:12px;font-weight:700;width:max-content}.meta{display:grid;gap:8px;font-size:13px;color:var(--muted)}
+    textarea{width:100%;min-height:130px;resize:vertical;border-radius:18px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);padding:16px;line-height:1.65}
+    pre,.box{margin:0;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto;font-family:inherit;font-size:13px;line-height:1.6;color:var(--muted);padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:var(--surface-2)}
+    .label{font-size:12px;color:var(--muted);font-weight:800;margin-bottom:8px}.footer{font-size:12px;color:var(--muted);text-align:right}
+    @media (max-width:1100px){.hero,.layout,.upload-grid,.preview-grid{grid-template-columns:1fr}}
+    @media (max-width:760px){.page,.topbar{padding-left:16px;padding-right:16px}.topbar{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">TP</div>
+      <div>
+        <h1>Tech Pack Compare</h1>
+        <p>Perplexity API + merchandiser-friendly result view</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <span class="pill">A + B upgraded</span>
+      <span class="pill">Structured compare prompt</span>
+      <button class="btn" id="healthBtn">Check API</button>
+      <button class="btn btn-primary" id="compareBtn">Run AI Compare</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="hero">
+      <div class="card panel">
+        <div class="eyebrow">Sales / Merch compare mode</div>
+        <h2>Return practical compare results instead of raw AI text.</h2>
+        <p class="muted">這版已經同時做好兩件事：一是優化 compare prompt，令輸出更像成衣 Sales / 跟單會看的內容；二是前端不再只顯示 raw JSON，而會 render 成 overview、key differences、buyer comments、follow-up actions 卡片。[web:126][web:127][web:128][web:129]</p>
+        <div class="hero-actions">
+          <button class="btn btn-primary" id="compareBtn2">Run AI Compare</button>
+          <button class="btn" id="fillDemoBtn">Load Demo Comments</button>
+        </div>
+      </div>
+      <div class="card panel">
+        <div class="stats">
+          <div class="stat"><span>Files loaded</span><strong id="statFiles">0</strong></div>
+          <div class="stat"><span>Pages extracted</span><strong id="statPages">0</strong></div>
+          <div class="stat"><span>Chars A</span><strong id="statCharsA">0</strong></div>
+          <div class="stat"><span>Chars B</span><strong id="statCharsB">0</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div class="card panel">
+        <div class="section-head">
+          <div>
+            <h3>Upload workspace</h3>
+            <p>上傳兩份 PDF，輸入 buyer comments，之後送去 compare-techpacks function。</p>
+          </div>
+          <span class="pill">Input</span>
+        </div>
+        <div class="upload-grid">
+          <label class="drop" id="dropA">
+            <input type="file" id="fileA" accept="application/pdf" />
+            <div>
+              <strong>Tech Pack A PDF</strong>
+              <p class="muted">Original / previous version</p>
+            </div>
+            <div class="meta">
+              <span class="file-chip" id="fileAName">No file selected</span>
+              <span id="fileAMeta">Pages: - · Characters: -</span>
+            </div>
+          </label>
+          <label class="drop" id="dropB">
+            <input type="file" id="fileB" accept="application/pdf" />
+            <div>
+              <strong>Tech Pack B PDF</strong>
+              <p class="muted">Updated / latest version</p>
+            </div>
+            <div class="meta">
+              <span class="file-chip" id="fileBName">No file selected</span>
+              <span id="fileBMeta">Pages: - · Characters: -</span>
+            </div>
+          </label>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="section-head" style="margin-bottom:12px;">
+            <div>
+              <h3 style="font-size:17px;">Buyer comments</h3>
+              <p>一併提供比 AI 分析 follow-up actions。</p>
+            </div>
+          </div>
+          <textarea id="commentsInput" placeholder="Please revise neck drop to 7.5 cm, update care label wording, and confirm collar edge topstitch."></textarea>
+        </div>
+      </div>
+
+      <div class="card panel">
+        <div class="section-head">
+          <div>
+            <h3>Results</h3>
+            <p>右邊先看 API health，下方看 AI compare rendered cards。</p>
+          </div>
+        </div>
+        <div class="preview-grid">
+          <div>
+            <div class="label">Health</div>
+            <pre id="healthOut">Not checked yet.</pre>
+          </div>
+          <div>
+            <div class="label">Rendered compare result</div>
+            <div id="compareOut" class="box">Not run yet.</div>
+          </div>
+          <div>
+            <div class="label">Extracted Text A</div>
+            <pre id="textAOut">Upload PDF A to preview extracted text.</pre>
+          </div>
+          <div>
+            <div class="label">Extracted Text B</div>
+            <pre id="textBOut">Upload PDF B to preview extracted text.</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="footer">Prompt now emphasizes BOM, measurement specs, labels, packaging, construction, and follow-up relevance for merchandisers.[web:126][web:127][web:128][web:129][web:134]</div>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
