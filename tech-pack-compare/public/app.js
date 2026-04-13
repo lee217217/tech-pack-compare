@@ -39,6 +39,7 @@ const state = {
 };
 
 (function initTheme() {
+  if (!themeToggle || !themeIcon || !themeText) return;
   const root = document.documentElement;
   let theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   const applyTheme = (mode) => {
@@ -54,21 +55,22 @@ const state = {
 })();
 
 function setActionStatus(text) {
-  actionStatus.textContent = text;
+  if (actionStatus) actionStatus.textContent = text;
 }
 
 function updateStats() {
-  statFiles.textContent = [state.A.name, state.B.name].filter(Boolean).length;
-  statPages.textContent = state.A.pages + state.B.pages;
-  statPreviewA.textContent = state.A.preview?.page || '-';
-  statPreviewB.textContent = state.B.preview?.page || '-';
+  if (statFiles) statFiles.textContent = [state.A.name, state.B.name].filter(Boolean).length;
+  if (statPages) statPages.textContent = state.A.pages + state.B.pages;
+  if (statPreviewA) statPreviewA.textContent = state.A.preview?.page || '-';
+  if (statPreviewB) statPreviewB.textContent = state.B.preview?.page || '-';
 }
 
 function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
+  return String(str ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
 function fillPageSelect(select, numPages) {
+  if (!select) return;
   select.innerHTML = '';
   for (let i = 1; i <= numPages; i++) {
     const option = document.createElement('option');
@@ -94,11 +96,14 @@ function statusBadgeHtml(status = 'Changed') {
 }
 
 function toBulletList(items, emptyText) {
-  return items.length ? `<ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : `<ul><li>${escapeHtml(emptyText)}</li></ul>`;
+  const safe = Array.isArray(items) ? items.filter(Boolean) : [];
+  return safe.length
+    ? `<ul>${safe.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+    : `<ul><li>${escapeHtml(emptyText)}</li></ul>`;
 }
 
 function uniqueItems(items) {
-  return [...new Set(items.map(v => String(v).trim()).filter(Boolean))];
+  return [...new Set((items || []).map(v => String(v).trim()).filter(Boolean))];
 }
 
 function detectCustomerProfile(comments = '') {
@@ -113,7 +118,7 @@ function classifyPages(entry) {
   if (!pages.length) return { scores: [], autoTextPages: [], autoImagePages: [], autoMeasurementPages: [] };
 
   const scores = pages.map(({ page, text, length }) => {
-    const lower = text.toLowerCase();
+    const lower = String(text || '').toLowerCase();
     const hasMeasurement = /measurement|measure|spec|pom|size|neck|chest|waist|hip|sleeve|inseam|outseam|tolerance/.test(lower);
     const hasComment = /comment|remarks|revise|amend|change to|pls change|approved with comment|buyer comment/.test(lower);
     const hasArtwork = /sketch|artwork|graphic|photo|placement|print|embroidery|label position/.test(lower);
@@ -152,7 +157,7 @@ function classifyPages(entry) {
 
   const autoTextPages = scores.filter(item => item.textScore > 0).sort((a, b) => b.textScore - a.textScore || a.page - b.page).slice(0, 3).map(item => item.page);
   const autoImagePages = scores.filter(item => item.imageScore > 0).sort((a, b) => b.imageScore - a.imageScore || a.page - b.page).slice(0, 3).map(item => item.page);
-  const autoMeasurementPages = scores.filter(item => item.measurementScore > 0).sort((a, b) => b.measurementScore - a.measurementScore || a.page - b.page).slice(0, 2).map(item => item.page);
+  const autoMeasurementPages = scores.filter(item => item.measurementScore > 0).sort((a, b) => b.measurementScore - a.measurementScore || a.page - b.page).slice(0, 3).map(item => item.page);
 
   return { scores, autoTextPages, autoImagePages, autoMeasurementPages };
 }
@@ -209,7 +214,7 @@ function parseMeasurementLine(line = '') {
   const numberTokens = clean.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || [];
 
   const pomMatch = clean.match(/^(POM\s*[A-Z0-9.-]+|POINT OF MEASURE\s*[A-Z0-9.-]*|PTS OF MEASURE\s*[A-Z0-9.-]*|[A-Z]\.|[A-Z][0-9])/i);
-  const numberCount = (clean.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || []).length;
+  const numberCount = numberTokens.length;
   const fallbackPom = numberCount >= 2 ? 'POM' : '';
   const pomName = normalizeMeasurementLine(pomMatch?.[1] || fallbackPom);
   const withoutPom = pomMatch ? clean.replace(pomMatch[1], '').trim() : clean;
@@ -225,8 +230,8 @@ function parseMeasurementLine(line = '') {
     sizeTokens.forEach((size, i) => {
       if (numberTokens[i] !== undefined) sizeValueMap[size.toUpperCase()] = numberTokens[i];
     });
-  } else if (numberTokens.length && numberTokens.length <= 8) {
-    numberTokens.forEach((value, i) => { sizeValueMap[`Value ${i+1}`] = value; });
+  } else if (numberTokens.length && numberTokens.length <= 12) {
+    numberTokens.forEach((value, i) => { sizeValueMap[`Value ${i + 1}`] = value; });
   }
 
   const keyBase = normalizeMeasurementLine(`${pomName} ${description}` || clean).toLowerCase();
@@ -240,7 +245,7 @@ function extractMeasurementLines(entry, pages) {
   (pages || []).forEach(pageNum => {
     const text = getPageText(entry, pageNum);
     String(text || '')
-      .split(/(?=\b(?:POM|POINT OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE|SWEEP|BICEP|CUFF)\b)/i)
+      .split(/(?=\b(?:POM|POINT OF MEASURE|PTS OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE|SWEEP|BICEP|CUFF)\b)/i)
       .map(normalizeMeasurementLine)
       .filter(Boolean)
       .forEach(line => {
@@ -250,7 +255,6 @@ function extractMeasurementLines(entry, pages) {
   });
   return lines;
 }
-
 
 function extractRawMeasurementCandidates(entry, pages) {
   const out = [];
@@ -276,7 +280,7 @@ function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
   const mapB = new Map(candB.map(item => [item.key, item]));
   const rows = [];
 
-  candA.slice(0, 20).forEach(itemA => {
+  candA.slice(0, 40).forEach(itemA => {
     const itemB = mapB.get(itemA.key);
     if (!itemB) return;
     const max = Math.max(itemA.nums.length, itemB.nums.length);
@@ -286,7 +290,7 @@ function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
       if (valueA !== valueB) {
         rows.push({
           pomName: 'POM',
-          description: itemA.raw.replace(/\s+/g, ' ').slice(0, 90),
+          description: itemA.raw.replace(/\s+/g, ' ').slice(0, 120),
           size: `Value ${i + 1}`,
           valueA,
           valueB,
@@ -302,101 +306,106 @@ function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
   return rows;
 }
 
-async function extractMeasurementTableViaOCR(side, pages) {
-  const rows = [];
-  for (const pageNum of (pages || []).slice(0, 2)) {
-    const preview = await buildPreviewForSide(side, pageNum, false);
-    if (!preview?.dataUrl) continue;
-    const data = await callJson('/.netlify/functions/extract-measurement-table', { image: preview.dataUrl, side, page: pageNum });
-    const pageRows = Array.isArray(data?.result?.rows) ? data.result.rows : [];
-    pageRows.forEach(row => rows.push({ ...row, page: pageNum }));
+async function buildPreviewForSide(side, pageNum, setVisible = false) {
+  const entry = state[side];
+  if (!entry?.pdf || !pageNum) return null;
+  const page = await entry.pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 1.4 });
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: context, viewport }).promise;
+  const dataUrl = canvas.toDataURL('image/png');
+  const preview = { page: pageNum, dataUrl, width: canvas.width, height: canvas.height };
+
+  if (setVisible) {
+    state[side].preview = preview;
+    const img = side === 'A' ? previewImgA : previewImgB;
+    const meta = side === 'A' ? previewMetaA : previewMetaB;
+    if (img) img.src = dataUrl;
+    if (meta) meta.textContent = `Page ${pageNum} · ${canvas.width} × ${canvas.height}`;
+    updateStats();
   }
-  return rows;
+
+  return preview;
 }
 
-function compareExtractedMeasurementRows(rowsA, rowsB) {
-  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+async function renderPagePreview(side, pageNum) {
+  await buildPreviewForSide(side, pageNum, true);
+}
 
-  const mapA = new Map(
-    (rowsA || []).map((r) => [norm(`${r.pom_name} ${r.description}`), r])
-  );
-  const mapB = new Map(
-    (rowsB || []).map((r) => [norm(`${r.pom_name} ${r.description}`), r])
-  );
+async function extractPdfText(file, side) {
+  if (!file) return;
+  const meta = side === 'A' ? fileAMeta : fileBMeta;
+  const nameEl = side === 'A' ? fileAName : fileBName;
+  const pageSelect = side === 'A' ? textASelect : textBSelect;
 
-  const keys = [...new Set([...mapA.keys(), ...mapB.keys()])];
-  const rows = [];
+  try {
+    setActionStatus(`Reading PDF ${side}...`);
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    const pageTexts = [];
+    const pageTextMap = [];
 
-  keys.forEach((key) => {
-    const a = mapA.get(key);
-    const b = mapB.get(key);
-    const sizeKeys = [
-      ...new Set([
-        ...Object.keys(a?.size_values || {}),
-        ...Object.keys(b?.size_values || {})
-      ])
-    ];
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+      const line = content.items.map(item => item.str || '').join(' ').replace(/\s+/g, ' ').trim();
+      pageTexts.push(`--- Page ${pageNum} ---\n${line}`);
+      pageTextMap.push({ page: pageNum, text: line, length: line.length });
+    }
 
-    sizeKeys.forEach((size) => {
-      const valueA =
-        (a && a.size_values && a.size_values[size] !== undefined
-          ? String(a.size_values[size]).trim()
-          : '') || '';
-      const valueB =
-        (b && b.size_values && b.size_values[size] !== undefined
-          ? String(b.size_values[size]).trim()
-          : '') || '';
+    const fullText = pageTexts.join('\n\n');
+    const nextEntry = {
+      name: file.name,
+      pages: pdf.numPages,
+      text: fullText,
+      pdf,
+      preview: null,
+      pageTextMap,
+      pageScores: [],
+      autoTextPages: [],
+      autoImagePages: [],
+      autoMeasurementPages: []
+    };
 
-      if (!valueA && !valueB) return;
+    const classified = classifyPages(nextEntry);
+    nextEntry.pageScores = classified.scores;
+    nextEntry.autoTextPages = classified.autoTextPages;
+    nextEntry.autoImagePages = classified.autoImagePages;
+    nextEntry.autoMeasurementPages = classified.autoMeasurementPages;
+    state[side] = nextEntry;
 
-      const status =
-        valueA === valueB
-          ? 'Same'
-          : !valueA
-          ? 'Added in B'
-          : !valueB
-          ? 'Removed from B'
-          : 'Changed';
-
-      if (status === 'Same') return;
-
-      rows.push({
-        pomName: a?.pom_name || b?.pom_name || 'POM',
-        description: a?.description || b?.description || '-',
-        size,
-        valueA: valueA || '-',
-        valueB: valueB || '-',
-        status,
-        pageA: a?.page || '-',
-        pageB: b?.page || '-',
-        impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam|band|cup|wing/.test(
-          `${a?.pom_name || ''} ${a?.description || b?.description || ''}`.toLowerCase()
-        )
-          ? 'high'
-          : 'medium'
-      });
-    });
-  });
-
-  const changes = rows.map((row) => ({
-    before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
-    after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
-    impact: row.impact
-  }));
-
-  const summary = rows.length
-    ? `${rows.length} measurement difference row(s) were identified by POM and size label.`
-    : 'Measurement tables were processed but no numeric differences were found between A and B.';
-
-  return { summary, changes, rows };
+    if (nameEl) nameEl.textContent = file.name;
+    if (meta) meta.textContent = `Pages: ${pdf.numPages} · Characters: ${fullText.length.toLocaleString()} · Auto compare ready`;
+    fillPageSelect(pageSelect, pdf.numPages);
+    const firstPreviewPage = nextEntry.autoImagePages[0] || nextEntry.autoMeasurementPages[0] || 1;
+    if (pageSelect) pageSelect.value = String(firstPreviewPage);
+    await renderPagePreview(side, firstPreviewPage);
+    setActionStatus(`PDF ${side} ready`);
+  } catch (error) {
+    if (meta) meta.textContent = 'Pages: - · Characters: -';
+    console.error(error);
+    setActionStatus(`Failed to read PDF ${side}: ${error.message}`);
+  } finally {
+    updateStats();
+  }
 }
 
 function bindDropzone(dropId, input, side) {
   const zone = document.getElementById(dropId);
-  ['dragenter', 'dragover'].forEach(name => zone.addEventListener(name, e => { e.preventDefault(); zone.classList.add('dragover'); }));
-  ['dragleave', 'drop'].forEach(name => zone.addEventListener(name, e => { e.preventDefault(); zone.classList.remove('dragover'); }));
+  if (!zone || !input) return;
+  ['dragenter', 'dragover'].forEach(name => zone.addEventListener(name, e => {
+    e.preventDefault();
+    zone.classList.add('dragover');
+  }));
+  ['dragleave', 'drop'].forEach(name => zone.addEventListener(name, e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+  }));
   zone.addEventListener('drop', e => {
-    const file = e.dataTransfer.files?.[0];
+    const file = e.dataTransfer?.files?.[0];
     if (file && file.type === 'application/pdf') {
       const dt = new DataTransfer();
       dt.items.add(file);
@@ -412,18 +421,83 @@ async function callJson(url, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || data.message || 'Request failed');
   return data;
+}
+
+async function extractMeasurementTableViaOCR(side, pages) {
+  const rows = [];
+  for (const pageNum of (pages || []).slice(0, 3)) {
+    const preview = await buildPreviewForSide(side, pageNum, false);
+    if (!preview?.dataUrl) continue;
+    const data = await callJson('/.netlify/functions/extract-measurement-table', { image: preview.dataUrl, side, page: pageNum });
+    const pageRows = Array.isArray(data?.result?.rows) ? data.result.rows : [];
+    pageRows.forEach(row => rows.push({ ...row, page: pageNum }));
+  }
+  return rows;
+}
+
+function compareExtractedMeasurementRows(rowsA, rowsB) {
+  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const mapA = new Map((rowsA || []).map(r => [norm(`${r.pom_name} ${r.description}`), r]));
+  const mapB = new Map((rowsB || []).map(r => [norm(`${r.pom_name} ${r.description}`), r]));
+  const keys = [...new Set([...mapA.keys(), ...mapB.keys()])];
+  const rows = [];
+
+  keys.forEach(key => {
+    const a = mapA.get(key);
+    const b = mapB.get(key);
+    const sizeKeys = [...new Set([...Object.keys(a?.size_values || {}), ...Object.keys(b?.size_values || {})])];
+
+    sizeKeys.forEach(size => {
+      const rawA = a?.size_values?.[size];
+      const rawB = b?.size_values?.[size];
+      const valueA = rawA === undefined || rawA === null || String(rawA).trim() === '' ? '-' : String(rawA).trim();
+      const valueB = rawB === undefined || rawB === null || String(rawB).trim() === '' ? '-' : String(rawB).trim();
+      const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
+
+      if (status !== 'Same') {
+        rows.push({
+          pomName: a?.pom_name || b?.pom_name || 'POM',
+          description: a?.description || b?.description || '-',
+          size,
+          valueA,
+          valueB,
+          status,
+          pageA: a?.page || '-',
+          pageB: b?.page || '-',
+          impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam|band|cup|wing/.test(`${a?.pom_name || ''} ${a?.description || b?.description || ''}`.toLowerCase()) ? 'high' : 'medium'
+        });
+      }
+    });
+  });
+
+  const changes = rows.map(row => ({
+    before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
+    after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
+    impact: row.impact
+  }));
+
+  const summary = rows.length
+    ? `${rows.length} measurement difference row(s) were identified by OCR table extraction.`
+    : 'No clear measurement changes found.';
+
+  return { summary, changes, rows };
 }
 
 async function runMultiImageCompare(pickA, pickB) {
   const pairs = [];
-  const max = Math.min(Math.max(pickA.imagePages.length, pickB.imagePages.length), 3);
+  const pagesA = pickA?.imagePages?.length ? pickA.imagePages : pickA?.textPages || [];
+  const pagesB = pickB?.imagePages?.length ? pickB.imagePages : pickB?.textPages || [];
+  const max = Math.min(Math.max(pagesA.length, pagesB.length), 3);
+
   for (let i = 0; i < max; i++) {
-    const pageA = pickA.imagePages[i] || pickA.imagePages[0];
-    const pageB = pickB.imagePages[i] || pickB.imagePages[0];
+    const pageA = pagesA[i] || pagesA[0];
+    const pageB = pagesB[i] || pagesB[0];
     if (!pageA || !pageB) continue;
+
     const previewA = await buildPreviewForSide('A', pageA, i === 0);
     const previewB = await buildPreviewForSide('B', pageB, i === 0);
     const result = await callJson('/.netlify/functions/analyze-techpack-images', {
@@ -431,7 +505,7 @@ async function runMultiImageCompare(pickA, pickB) {
       imageB: previewB?.dataUrl || '',
       pageA,
       pageB,
-      comments: commentsInput.value || ''
+      comments: commentsInput?.value || ''
     });
     pairs.push({ pageA, pageB, result });
   }
@@ -465,7 +539,6 @@ function buildPointFormSummary({ textData, imageData, measurementData, imageSkip
   const imageActions = Array.isArray(imageResult.action_items) ? imageResult.action_items : [];
   const measurementSummary = measurementData?.summary || '';
   const measurementChanges = Array.isArray(measurementData?.changes) ? measurementData.changes : [];
-  const measurementRows = Array.isArray(measurementData?.rows) ? measurementData.rows : [];
 
   const topSummary = uniqueItems([
     textSummary.overview || '',
@@ -515,7 +588,6 @@ function renderFinalReport({ textData, imageData, measurementData, imageSkipped 
   const imageComments = Array.isArray(imageResult.visible_comments) ? imageResult.visible_comments : [];
   const imageChanges = Array.isArray(imageResult.visual_changes) ? imageResult.visual_changes : [];
   const imageActions = Array.isArray(imageResult.action_items) ? imageResult.action_items : [];
-  const measurementChanges = Array.isArray(measurementData?.changes) ? measurementData.changes : [];
   const measurementRows = Array.isArray(measurementData?.rows) ? measurementData.rows : [];
 
   const summaryPack = buildPointFormSummary({ textData, imageData, measurementData, imageSkipped, imageError });
@@ -631,7 +703,7 @@ function renderFinalReport({ textData, imageData, measurementData, imageSkipped 
   `;
 
   state.latestReportHtml = html;
-  finalReportOut.innerHTML = html;
+  if (finalReportOut) finalReportOut.innerHTML = html;
 }
 
 async function runImageOnly() {
@@ -642,7 +714,7 @@ async function runImageOnly() {
 
   try {
     setActionStatus('Running image review...');
-    state.customerProfile = detectCustomerProfile(commentsInput.value);
+    state.customerProfile = detectCustomerProfile(commentsInput?.value);
     const pickA = pickPagesForProfile(state.customerProfile, state.A);
     const pickB = pickPagesForProfile(state.customerProfile, state.B);
     const imageData = await runMultiImageCompare(pickA, pickB);
@@ -662,7 +734,7 @@ async function runFullCompare() {
 
   try {
     setActionStatus('Preparing automatic comparison...');
-    state.customerProfile = detectCustomerProfile(commentsInput.value);
+    state.customerProfile = detectCustomerProfile(commentsInput?.value);
     const pickA = pickPagesForProfile(state.customerProfile, state.A);
     const pickB = pickPagesForProfile(state.customerProfile, state.B);
 
@@ -680,13 +752,38 @@ async function runFullCompare() {
     const textData = await callJson('/.netlify/functions/compare-techpacks', {
       textA,
       textB,
-      comments: commentsInput.value || ''
+      comments: commentsInput?.value || ''
     });
 
     setActionStatus('Extracting measurement tables...');
-    const measurementRowsA = await extractMeasurementTableViaOCR('A', pickA.measurementPages.length ? pickA.measurementPages : pickA.textPages);
-    const measurementRowsB = await extractMeasurementTableViaOCR('B', pickB.measurementPages.length ? pickB.measurementPages : pickB.textPages);
-    const measurementData = compareExtractedMeasurementRows(measurementRowsA, measurementRowsB);
+    const targetPagesA = pickA.measurementPages.length ? pickA.measurementPages : pickA.textPages;
+    const targetPagesB = pickB.measurementPages.length ? pickB.measurementPages : pickB.textPages;
+
+    let measurementRowsA = [];
+    let measurementRowsB = [];
+    try {
+      measurementRowsA = await extractMeasurementTableViaOCR('A', targetPagesA);
+      measurementRowsB = await extractMeasurementTableViaOCR('B', targetPagesB);
+    } catch (ocrError) {
+      console.warn('OCR extraction failed, fallback to raw text parsing', ocrError);
+    }
+
+    let measurementData = compareExtractedMeasurementRows(measurementRowsA, measurementRowsB);
+
+    if (!measurementData.rows.length) {
+      const fallbackRows = buildFallbackMeasurementRows(state.A, state.B, targetPagesA, targetPagesB);
+      if (fallbackRows.length) {
+        measurementData = {
+          summary: `${fallbackRows.length} measurement difference row(s) were identified by fallback text parsing.`,
+          changes: fallbackRows.map(row => ({
+            before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
+            after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
+            impact: row.impact
+          })),
+          rows: fallbackRows
+        };
+      }
+    }
 
     let imageData = null;
     let imageSkipped = false;
