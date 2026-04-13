@@ -62,8 +62,6 @@ export const handler = async (event) => {
             ]
           }
         ],
-        // 關閉 web search，這是純表格 OCR 任務
-        search_domain_filter: 'none',
         temperature: 0
       })
     });
