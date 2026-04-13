@@ -302,62 +302,48 @@ function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
   return rows;
 }
 
-function compareMeasurementSections(entryA, entryB, pagesA, pagesB) {
-  const linesA = extractMeasurementLines(entryA, pagesA);
-  const linesB = extractMeasurementLines(entryB, pagesB);
-  const groupedA = new Map();
-  const groupedB = new Map();
-
-  linesA.forEach(item => { if (!groupedA.has(item.key)) groupedA.set(item.key, item); });
-  linesB.forEach(item => { if (!groupedB.has(item.key)) groupedB.set(item.key, item); });
-
-  const keys = [...new Set([...groupedA.keys(), ...groupedB.keys()])];
-  let rows = [];
-
-  keys.slice(0, 30).forEach(key => {
-    const a = groupedA.get(key);
-    const b = groupedB.get(key);
-    const pomName = a?.pomName || b?.pomName || 'POM';
-    const description = a?.description || b?.description || '-';
-    const sizes = [...new Set([...Object.keys(a?.sizeValueMap || {}), ...Object.keys(b?.sizeValueMap || {})])];
-
-    if (sizes.length) {
-      sizes.forEach(size => {
-        const valueA = a?.sizeValueMap?.[size] || '-';
-        const valueB = b?.sizeValueMap?.[size] || '-';
-        const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
-        if (status !== 'Same') {
-          rows.push({
-            pomName,
-            description,
-            size,
-            valueA,
-            valueB,
-            status,
-            pageA: a?.page || '-',
-            pageB: b?.page || '-',
-            impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam/.test(`${pomName} ${description}`.toLowerCase()) ? 'high' : 'medium'
-          });
-        }
-      });
-    } else if ((a?.raw || '-') !== (b?.raw || '-')) {
-      rows.push({
-        pomName,
-        description,
-        size: '-',
-        valueA: a?.raw || '-',
-        valueB: b?.raw || '-',
-        status: a?.raw && b?.raw ? 'Changed' : a?.raw ? 'Removed from B' : 'Added in B',
-        pageA: a?.page || '-',
-        pageB: b?.page || '-',
-        impact: 'medium'
-      });
-    }
-  });
-
-  if (!rows.length) {
-    rows = buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB);
+async function extractMeasurementTableViaOCR(side, pages) {
+  const rows = [];
+  for (const pageNum of (pages || []).slice(0, 2)) {
+    const preview = await buildPreviewForSide(side, pageNum, false);
+    if (!preview?.dataUrl) continue;
+    const data = await callJson('/.netlify/functions/extract-measurement-table', { image: preview.dataUrl, side, page: pageNum });
+    const pageRows = Array.isArray(data?.result?.rows) ? data.result.rows : [];
+    pageRows.forEach(row => rows.push({ ...row, page: pageNum }));
   }
+  return rows;
+}
+
+function compareExtractedMeasurementRows(rowsA, rowsB) {
+  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const mapA = new Map(rowsA.map(r => [norm(`${r.pom_name} ${r.description}`), r]));
+  const mapB = new Map(rowsB.map(r => [norm(`${r.pom_name} ${r.description}`), r]));
+  const keys = [...new Set([...mapA.keys(), ...mapB.keys()])];
+  const rows = [];
+
+  keys.forEach(key => {
+    const a = mapA.get(key);
+    const b = mapB.get(key);
+    const sizeKeys = [...new Set([...Object.keys(a?.size_values || {}), ...Object.keys(b?.size_values || {})])];
+    sizeKeys.forEach(size => {
+      const valueA = a?.size_values?.[size] || '-';
+      const valueB = b?.size_values?.[size] || '-';
+      const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
+      if (status !== 'Same') {
+        rows.push({
+          pomName: a?.pom_name || b?.pom_name || 'POM',
+          description: a?.description || b?.description || '-',
+          size,
+          valueA,
+          valueB,
+          status,
+          pageA: a?.page || '-',
+          pageB: b?.page || '-',
+          impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam/.test(`${a?.pom_name || ''} ${a?.description || b?.description || ''}`.toLowerCase()) ? 'high' : 'medium'
+        });
+      }
+    });
+  });
 
   const changes = rows.map(row => ({
     before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
@@ -366,8 +352,8 @@ function compareMeasurementSections(entryA, entryB, pagesA, pagesB) {
   }));
 
   const summary = rows.length
-    ? `${rows.length} measurement difference row(s) were identified by POM and size.`
-    : 'No clear measurement difference was identified from the selected measurement pages.';
+    ? `${rows.length} measurement difference row(s) were identified by OCR table extraction.`
+    : 'No clear measurement changes found.';
 
   return { summary, changes, rows };
 }
@@ -751,7 +737,10 @@ async function runFullCompare() {
       comments: commentsInput.value || ''
     });
 
-    const measurementData = compareMeasurementSections(state.A, state.B, pickA.measurementPages, pickB.measurementPages);
+    setActionStatus('Extracting measurement tables...');
+    const measurementRowsA = await extractMeasurementTableViaOCR('A', pickA.measurementPages.length ? pickA.measurementPages : pickA.textPages);
+    const measurementRowsB = await extractMeasurementTableViaOCR('B', pickB.measurementPages.length ? pickB.measurementPages : pickB.textPages);
+    const measurementData = compareExtractedMeasurementRows(measurementRowsA, measurementRowsB);
 
     let imageData = null;
     let imageSkipped = false;
