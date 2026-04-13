@@ -83,6 +83,16 @@ function badgeHtml(impact = 'low') {
   return `<span class="${cls}">${escapeHtml(String(impact).toUpperCase())}</span>`;
 }
 
+function statusBadgeHtml(status = 'Changed') {
+  const normalized = String(status || 'Changed');
+  let cls = 'badge badge-medium';
+  if (normalized === 'Changed') cls = 'badge badge-high';
+  if (normalized === 'Same') cls = 'badge badge-low';
+  if (normalized === 'Added in B') cls = 'badge badge-medium';
+  if (normalized === 'Removed from B') cls = 'badge badge-medium';
+  return `<span class="${cls}">${escapeHtml(normalized)}</span>`;
+}
+
 function toBulletList(items, emptyText) {
   return items.length ? `<ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : `<ul><li>${escapeHtml(emptyText)}</li></ul>`;
 }
@@ -180,32 +190,41 @@ function normalizeMeasurementLine(line = '') {
 }
 
 const COMMON_SIZE_HEADERS = ['XXS','XS','S','M','L','XL','XXL','2XL','3XL','4XL','5XL'];
+const MEASUREMENT_HINTS = /(pom|point of measure|neck|chest|waist|hip|sleeve|length|opening|bottom|shoulder|inseam|outseam|tolerance|body length|across|armhole|sweep|bicep|cuff)/i;
+const NON_MEASUREMENT_HINTS = /(bom|costing|fabric|trim|supplier|article|centric|detail|packaging|polybag|hangtag|label artwork|revision date)/i;
+
+function looksLikeMeasurementLine(clean = '') {
+  return MEASUREMENT_HINTS.test(clean) && !NON_MEASUREMENT_HINTS.test(clean);
+}
 
 function parseMeasurementLine(line = '') {
   const clean = normalizeMeasurementLine(line);
+  if (!looksLikeMeasurementLine(clean)) return null;
+
   const tokens = clean.split(/\s+/).filter(Boolean);
   const sizeTokens = tokens.filter(token => COMMON_SIZE_HEADERS.includes(token.toUpperCase()));
   const numberTokens = clean.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || [];
 
-  const pomMatch = clean.match(/^(POM\s*[A-Z0-9.-]+|[A-Z]\.|[A-Z][0-9]|POINT OF MEASURE\s*[A-Z0-9.-]*)/i);
-  const pomName = normalizeMeasurementLine(pomMatch?.[1] || '');
-  const withoutPom = pomName ? clean.replace(pomMatch[1], '').trim() : clean;
+  const pomMatch = clean.match(/^(POM\s*[A-Z0-9.-]+|POINT OF MEASURE\s*[A-Z0-9.-]*|[A-Z]\.|[A-Z][0-9])/i);
+  const pomName = normalizeMeasurementLine(pomMatch?.[1] || 'POM');
+  const withoutPom = pomMatch ? clean.replace(pomMatch[1], '').trim() : clean;
 
   let description = withoutPom;
-  if (sizeTokens.length || numberTokens.length) {
-    const cutIdx = withoutPom.search(/\s(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|-?\d+(?:\.\d+)?(?:\/\d+)?)/i);
-    if (cutIdx > 0) description = withoutPom.slice(0, cutIdx).trim();
-  }
+  const cutIdx = withoutPom.search(/\s(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|-?\d+(?:\.\d+)?(?:\/\d+)?)/i);
+  if (cutIdx > 0) description = withoutPom.slice(0, cutIdx).trim();
+  description = normalizeMeasurementLine(description || clean);
 
   const sizeValueMap = {};
   if (sizeTokens.length && numberTokens.length) {
-    sizeTokens.forEach((size, i) => { sizeValueMap[size.toUpperCase()] = numberTokens[i] || '-'; });
-  } else if (numberTokens.length) {
+    sizeTokens.forEach((size, i) => {
+      if (numberTokens[i] !== undefined) sizeValueMap[size.toUpperCase()] = numberTokens[i];
+    });
+  } else if (numberTokens.length && numberTokens.length <= 8) {
     numberTokens.forEach((value, i) => { sizeValueMap[`Value ${i+1}`] = value; });
   }
 
   const key = normalizeMeasurementLine(`${pomName} ${description}` || clean).toLowerCase();
-  return { pomName: pomName || '-', description: description || clean, sizeValueMap, raw: clean, key };
+  return { pomName, description, sizeValueMap, raw: clean, key };
 }
 
 function extractMeasurementLines(entry, pages) {
@@ -213,12 +232,12 @@ function extractMeasurementLines(entry, pages) {
   (pages || []).forEach(pageNum => {
     const text = getPageText(entry, pageNum);
     String(text || '')
-      .split(/(?=\b(?:POM|POINT OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE)\b)/i)
+      .split(/(?=\b(?:POM|POINT OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE|SWEEP|BICEP|CUFF)\b)/i)
       .map(normalizeMeasurementLine)
       .filter(Boolean)
       .forEach(line => {
         const parsed = parseMeasurementLine(line);
-        if (parsed.key) lines.push({ page: pageNum, line, ...parsed });
+        if (parsed?.key) lines.push({ page: pageNum, line, ...parsed });
       });
   });
   return lines;
@@ -234,42 +253,57 @@ function compareMeasurementSections(entryA, entryB, pagesA, pagesB) {
   linesB.forEach(item => { if (!groupedB.has(item.key)) groupedB.set(item.key, item); });
 
   const keys = [...new Set([...groupedA.keys(), ...groupedB.keys()])];
-  const rows = keys.slice(0, 20).map(key => {
+  const rows = [];
+
+  keys.slice(0, 30).forEach(key => {
     const a = groupedA.get(key);
     const b = groupedB.get(key);
+    const pomName = a?.pomName || b?.pomName || 'POM';
+    const description = a?.description || b?.description || '-';
     const sizes = [...new Set([...Object.keys(a?.sizeValueMap || {}), ...Object.keys(b?.sizeValueMap || {})])];
-    const sizeDiffs = sizes.map(size => ({
-      size,
-      valueA: a?.sizeValueMap?.[size] || '-',
-      valueB: b?.sizeValueMap?.[size] || '-',
-      changed: (a?.sizeValueMap?.[size] || '-') !== (b?.sizeValueMap?.[size] || '-')
-    })).filter(item => item.changed);
 
-    const changed = (a?.raw || '-') !== (b?.raw || '-') || sizeDiffs.length > 0;
-    const labelBase = `${a?.pomName && a.pomName !== '-' ? a.pomName : b?.pomName || '-'} ${a?.description || b?.description || ''}`.trim();
-    const impact = /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam/.test(labelBase.toLowerCase()) ? 'high' : 'medium';
-
-    return {
-      pomName: a?.pomName && a.pomName !== '-' ? a.pomName : b?.pomName || '-',
-      description: a?.description || b?.description || '-',
-      pageA: a?.page || '-',
-      pageB: b?.page || '-',
-      sizeDiffs,
-      beforeRaw: a?.raw || '-',
-      afterRaw: b?.raw || '-',
-      changed,
-      impact: changed ? impact : 'low'
-    };
-  }).filter(row => row.changed);
+    if (sizes.length) {
+      sizes.forEach(size => {
+        const valueA = a?.sizeValueMap?.[size] || '-';
+        const valueB = b?.sizeValueMap?.[size] || '-';
+        const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
+        if (status !== 'Same') {
+          rows.push({
+            pomName,
+            description,
+            size,
+            valueA,
+            valueB,
+            status,
+            pageA: a?.page || '-',
+            pageB: b?.page || '-',
+            impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam/.test(`${pomName} ${description}`.toLowerCase()) ? 'high' : 'medium'
+          });
+        }
+      });
+    } else if ((a?.raw || '-') !== (b?.raw || '-')) {
+      rows.push({
+        pomName,
+        description,
+        size: '-',
+        valueA: a?.raw || '-',
+        valueB: b?.raw || '-',
+        status: a?.raw && b?.raw ? 'Changed' : a?.raw ? 'Removed from B' : 'Added in B',
+        pageA: a?.page || '-',
+        pageB: b?.page || '-',
+        impact: 'medium'
+      });
+    }
+  });
 
   const changes = rows.map(row => ({
-    before: `${row.pomName} ${row.description}`.trim(),
-    after: row.sizeDiffs.map(v => `${v.size}: ${v.valueA} → ${v.valueB}`).join('; ') || `${row.beforeRaw} → ${row.afterRaw}`,
+    before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
+    after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
     impact: row.impact
   }));
 
   const summary = rows.length
-    ? `${rows.length} POM row(s) show measurement differences, including size-level changes where detected.`
+    ? `${rows.length} measurement difference row(s) were identified by POM and size.`
     : 'No clear measurement difference was identified from the selected measurement pages.';
 
   return { summary, changes, rows };
@@ -514,22 +548,24 @@ function renderFinalReport({ textData, imageData, measurementData, imageSkipped 
             <table class="compact-table">
               <thead>
                 <tr>
-                  <th>Measurement Item</th>
-                  <th>Page A</th>
-                  <th>Page B</th>
-                  <th>Values in A</th>
-                  <th>Values in B</th>
+                  <th>POM Name</th>
+                  <th>Description</th>
+                  <th>Size</th>
+                  <th>Value A</th>
+                  <th>Value B</th>
+                  <th>Status</th>
                   <th>Impact</th>
                 </tr>
               </thead>
               <tbody>
                 ${measurementRows.map(row => `
                   <tr>
-                    <td><strong>${escapeHtml(row.pomName || '-')}</strong><br><span style="color:var(--muted)">${escapeHtml(row.description || '-')}</span></td>
-                    <td>${escapeHtml(String(row.pageA || '-'))}</td>
-                    <td>${escapeHtml(String(row.pageB || '-'))}</td>
-                    <td>${row.sizeDiffs?.length ? row.sizeDiffs.map(item => `<div><strong>${escapeHtml(item.size)}</strong>: ${escapeHtml(item.valueA || '-')}</div>`).join('') : escapeHtml(row.beforeRaw || '-')}</td>
-                    <td>${row.sizeDiffs?.length ? row.sizeDiffs.map(item => `<div><strong>${escapeHtml(item.size)}</strong>: ${escapeHtml(item.valueB || '-')}</div>`).join('') : escapeHtml(row.afterRaw || '-')}</td>
+                    <td>${escapeHtml(row.pomName || '-')}</td>
+                    <td>${escapeHtml(row.description || '-')}</td>
+                    <td>${escapeHtml(row.size || '-')}</td>
+                    <td>${escapeHtml(row.valueA || '-')}</td>
+                    <td>${escapeHtml(row.valueB || '-')}</td>
+                    <td>${statusBadgeHtml(row.status || 'Changed')}</td>
                     <td>${badgeHtml(row.impact || 'medium')}</td>
                   </tr>
                 `).join('')}
