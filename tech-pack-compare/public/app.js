@@ -251,6 +251,57 @@ function extractMeasurementLines(entry, pages) {
   return lines;
 }
 
+
+function extractRawMeasurementCandidates(entry, pages) {
+  const out = [];
+  (pages || []).forEach(pageNum => {
+    const text = getPageText(entry, pageNum);
+    String(text || '')
+      .split(/(?=\b(?:POM|POINT OF MEASURE|PTS OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE|SWEEP|BICEP|CUFF)\b)/i)
+      .map(normalizeMeasurementLine)
+      .filter(Boolean)
+      .forEach(line => {
+        const nums = line.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || [];
+        if (nums.length >= 2 && !NON_MEASUREMENT_HINTS.test(line)) {
+          out.push({ page: pageNum, raw: line, nums, key: line.toLowerCase().replace(/\d+(?:\.\d+)?(?:\/\d+)?/g, '#') });
+        }
+      });
+  });
+  return out;
+}
+
+function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
+  const candA = extractRawMeasurementCandidates(entryA, pagesA);
+  const candB = extractRawMeasurementCandidates(entryB, pagesB);
+  const mapB = new Map(candB.map(item => [item.key, item]));
+  const rows = [];
+
+  candA.slice(0, 20).forEach(itemA => {
+    const itemB = mapB.get(itemA.key);
+    if (!itemB) return;
+    const max = Math.max(itemA.nums.length, itemB.nums.length);
+    for (let i = 0; i < max; i++) {
+      const valueA = itemA.nums[i] || '-';
+      const valueB = itemB.nums[i] || '-';
+      if (valueA !== valueB) {
+        rows.push({
+          pomName: 'POM',
+          description: itemA.raw.replace(/\s+/g, ' ').slice(0, 90),
+          size: `Value ${i + 1}`,
+          valueA,
+          valueB,
+          status: valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed',
+          pageA: itemA.page,
+          pageB: itemB.page,
+          impact: 'medium'
+        });
+      }
+    }
+  });
+
+  return rows;
+}
+
 function compareMeasurementSections(entryA, entryB, pagesA, pagesB) {
   const linesA = extractMeasurementLines(entryA, pagesA);
   const linesB = extractMeasurementLines(entryB, pagesB);
@@ -261,7 +312,7 @@ function compareMeasurementSections(entryA, entryB, pagesA, pagesB) {
   linesB.forEach(item => { if (!groupedB.has(item.key)) groupedB.set(item.key, item); });
 
   const keys = [...new Set([...groupedA.keys(), ...groupedB.keys()])];
-  const rows = [];
+  let rows = [];
 
   keys.slice(0, 30).forEach(key => {
     const a = groupedA.get(key);
@@ -303,6 +354,10 @@ function compareMeasurementSections(entryA, entryB, pagesA, pagesB) {
       });
     }
   });
+
+  if (!rows.length) {
+    rows = buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB);
+  }
 
   const changes = rows.map(row => ({
     before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
