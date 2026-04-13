@@ -14,7 +14,7 @@
     .topbar{position:sticky;top:0;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 24px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg) 84%, transparent);backdrop-filter:blur(16px)}
     .brand{display:flex;align-items:center;gap:14px}.mark{width:46px;height:46px;border-radius:15px;background:var(--text);color:var(--surface);display:grid;place-items:center;font-weight:800}.brand h1{margin:0;font-size:18px}.brand p{margin:4px 0 0;font-size:13px;color:var(--muted)}
     .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.btn,.pill,.theme-btn{padding:10px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text)}.btn,.theme-btn{cursor:pointer;font-weight:700}.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}.pill{font-size:12px;color:var(--muted)}.theme-btn{display:inline-flex;align-items:center;gap:8px}
-    .page{max-width:1600px;margin:0 auto;padding:24px;display:grid;gap:20px}.hero{display:grid;grid-template-columns:1.15fr .85fr;gap:20px}.card{background:color-mix(in srgb,var(--surface) 95%, transparent);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md)}.panel{padding:24px}
+    .page{max-width:1600px;margin:0 auto;padding:24px;display:grid;gap:20px}.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:20px}.card{background:color-mix(in srgb,var(--surface) 95%, transparent);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md)}.panel{padding:24px}
     .eyebrow{display:inline-flex;padding:8px 12px;border-radius:999px;background:var(--primary-soft);color:var(--primary-strong);font-size:12px;font-weight:800;margin-bottom:16px}h2{margin:0;font-size:clamp(30px,4vw,50px);line-height:1.02;max-width:13ch}.muted{color:var(--muted);line-height:1.7}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}
     .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.stat{padding:18px;border:1px solid var(--border);border-radius:20px;background:var(--surface);box-shadow:var(--shadow-sm)}.stat span{display:block;color:var(--muted);font-size:13px;margin-bottom:8px;font-weight:700}.stat strong{font-size:28px}
     .workspace{display:grid;grid-template-columns:minmax(340px,400px) minmax(0,1fr);gap:20px;align-items:start}.side-stack{display:grid;gap:20px;position:sticky;top:92px;max-height:calc(100vh - 110px);overflow:auto;padding-right:2px}
@@ -22,15 +22,18 @@
     .drop-grid{display:grid;gap:14px}.drop{position:relative;min-height:170px;border:1.5px dashed color-mix(in srgb,var(--primary) 28%, var(--border));border-radius:22px;padding:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));display:flex;flex-direction:column;justify-content:space-between;gap:12px}.drop.dragover{border-color:var(--primary)}.drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
     .file-chip{display:inline-flex;padding:8px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:12px;font-weight:700;width:max-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.meta{display:grid;gap:8px;font-size:13px;color:var(--muted)}
     textarea,select{width:100%;border-radius:18px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);padding:14px 16px}.field{display:grid;gap:8px}.field label{font-size:13px;font-weight:700;color:var(--muted)} textarea{min-height:130px;resize:vertical;line-height:1.7}
-    .result-shell{padding:0;overflow:hidden;min-width:0}.result-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:22px 24px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 88%, transparent),color-mix(in srgb,var(--surface-2) 70%, transparent))}.result-top h3{margin:0;font-size:22px}.result-top p{margin:8px 0 0;color:var(--muted);font-size:14px;line-height:1.6}
+    .result-shell{padding:0;overflow:hidden;min-width:0}.result-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:22px 24px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 88%, transparent),color-mix(in srgb,var(--surface-2) 70%, transparent))}.result-top h3{margin:0;font-size:22px}.result-top p{margin:8px 0 0;color:var(--muted);font-size:14px;line-height:1.6}.result-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .result-body{display:grid;grid-template-columns:minmax(0,1fr) 330px;min-height:840px}.main-result{padding:24px;overflow:auto;background:var(--surface);min-width:0}.result-panel{padding:24px;border-left:1px solid var(--border);background:var(--surface-2);display:grid;align-content:start;gap:18px}
     .subpanel{padding:16px;border:1px solid var(--border);border-radius:20px;background:var(--surface);box-shadow:var(--shadow-sm)}.subpanel h4{margin:0 0 10px;font-size:14px}.subpanel p{margin:0;color:var(--muted);font-size:13px;line-height:1.7}
-    pre,.box{margin:0;white-space:pre-wrap;word-break:break-word;max-height:360px;overflow:auto;font-family:inherit;font-size:13px;line-height:1.7;color:var(--muted);padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:var(--surface-2)}#compareOut{min-height:540px;font-size:14px;line-height:1.7}
     .thumb-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.thumb{display:grid;gap:8px}.thumb img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:16px;border:1px solid var(--border);background:var(--surface-2)}.thumb small{color:var(--muted)}
+    .report-grid{display:grid;gap:16px}.report-card{padding:16px;border:1px solid var(--border);border-radius:20px;background:var(--surface-2)}.report-card h4{margin:0 0 10px;font-size:15px}.report-card p{margin:0;color:var(--muted);line-height:1.7}.report-list{margin:0 0 0 18px;padding:0;color:var(--muted);line-height:1.8}.report-items{display:grid;gap:10px}.report-item{border:1px solid var(--border);border-radius:16px;padding:12px;background:var(--surface);display:grid;gap:8px}.report-item-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.report-item-head strong{font-size:14px}.report-columns{display:grid;grid-template-columns:1fr 1fr;gap:12px}.label{font-size:12px;font-weight:800;color:var(--muted);margin-bottom:4px}.raw-box{white-space:pre-wrap;word-break:break-word;overflow:auto;font-family:inherit;font-size:13px;line-height:1.7;color:var(--muted);padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:var(--surface-2)}
+    .summary-grid{display:grid;gap:12px}.summary-panel{padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:var(--surface)}.summary-panel h5{margin:0 0 8px;font-size:13px}.summary-panel ul{margin:0 0 0 18px;padding:0;color:var(--muted);line-height:1.8}.summary-panel li{margin:0}
+    .badge{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:800}.badge-high{background:rgba(156,53,82,.12);color:var(--danger)}.badge-medium{background:rgba(156,97,27,.12);color:var(--warning)}.badge-low{background:rgba(47,125,69,.12);color:var(--success)}
     .footer{font-size:12px;color:var(--muted);text-align:right}
+    @media print {.topbar,.side-stack,.result-panel,.result-actions,.footer{display:none!important}.page,.workspace,.result-body{display:block}.main-result{padding:0;background:#fff}.result-shell,.report-card,.report-item,.summary-panel{box-shadow:none!important;border-color:#ccc!important}body{background:#fff;color:#000}}
     @media (max-width:1320px){.workspace{grid-template-columns:minmax(320px,360px) minmax(0,1fr)}.result-body{grid-template-columns:minmax(0,1fr) 280px}}
     @media (max-width:1100px){.hero,.workspace,.result-body{grid-template-columns:1fr}.side-stack{position:static;max-height:none;overflow:visible}.result-panel{border-left:none;border-top:1px solid var(--border)}}
-    @media (max-width:760px){.page,.topbar{padding-left:16px;padding-right:16px}.topbar{align-items:flex-start;flex-direction:column}.panel,.main-result,.result-panel{padding:18px}.result-top{padding:18px}.stats,.thumb-grid{grid-template-columns:1fr}}
+    @media (max-width:760px){.page,.topbar{padding-left:16px;padding-right:16px}.topbar{align-items:flex-start;flex-direction:column}.panel,.main-result,.result-panel{padding:18px}.result-top{padding:18px}.stats,.thumb-grid,.report-columns{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -39,25 +42,26 @@
       <div class="mark">TP</div>
       <div>
         <h1>Tech Pack Compare</h1>
-        <p>Text compare + image review skeleton</p>
+        <p>Final report with copy summary and export support</p>
       </div>
     </div>
     <div class="toolbar">
-      <span class="pill">Image analysis skeleton</span>
+      <span class="pill">Point-form summary</span>
+      <span class="pill">Copy + Export</span>
       <button class="theme-btn" id="themeToggle" aria-label="切換深色模式"><span id="themeIcon">🌙</span><span id="themeText">Dark</span></button>
-      <button class="btn btn-primary" id="compareBtn">Run Compare</button>
+      <button class="btn btn-primary" id="compareBtn">Generate Final Report</button>
     </div>
   </header>
 
   <main class="page">
     <section class="hero">
       <div class="card panel">
-        <div class="eyebrow">Next capability</div>
-        <h2>Add image-based comment review on top of text comparison.</h2>
-        <p class="muted">這個版本先幫你起好圖片分析骨架：除了原本的文字 compare，現在前端也會把 PDF 指定頁面 render 成圖片預覽，並可送去新的 image-analysis function，為之後處理客人用圖片標註的 comments 做準備。[web:170][web:184][web:188]</p>
+        <div class="eyebrow">Report actions added</div>
+        <h2>Readable point-form summary, plus copy and export for quick sharing.</h2>
+        <p class="muted">用 bullet points 呈現 summary 會更易掃描，特別適合跟單、Sales 同 management 快速睇重點；而 copy / export 亦是常見的 web 報告操作方式，方便分享或列印成 PDF。[web:244][web:247][web:249]</p>
         <div class="hero-actions">
-          <button class="btn btn-primary" id="compareBtn2">Run Compare</button>
-          <button class="btn" id="visionBtn">Run Image Review</button>
+          <button class="btn btn-primary" id="compareBtn2">Generate Final Report</button>
+          <button class="btn" id="visionBtn">Image Review Only</button>
         </div>
       </div>
       <div class="card panel">
@@ -76,9 +80,9 @@
           <div class="section-head">
             <div>
               <h3>Inputs</h3>
-              <p>上傳兩份 PDF，輸入 buyer comments，並選擇要做圖片檢視的頁碼。</p>
+              <p>Upload two PDFs, add buyer comments, then generate one final report.</p>
             </div>
-            <span class="pill">Ready</span>
+            <span class="pill">Workflow</span>
           </div>
           <div class="drop-grid">
             <label class="drop" id="dropA">
@@ -111,8 +115,8 @@
         <section class="card panel">
           <div class="section-head">
             <div>
-              <h3>Image preview</h3>
-              <p>先把指定頁面轉成圖片，再交由圖片分析 function 使用。</p>
+              <h3>Selected preview pages</h3>
+              <p>These pages will be used when the final report tries image review.</p>
             </div>
           </div>
           <div class="thumb-grid">
@@ -131,32 +135,34 @@
       <section class="card result-shell">
         <div class="result-top">
           <div>
-            <h3>Compare result</h3>
-            <p>文字比較結果與圖片分析骨架會集中顯示在這裡。</p>
+            <h3>Final report</h3>
+            <p>One merged output for summary, key changes, image comments, and action items.</p>
           </div>
-          <span class="pill">Main view</span>
+          <div class="result-actions">
+            <button class="btn" id="copySummaryBtn">Copy Summary</button>
+            <button class="btn" id="exportReportBtn">Export / Print</button>
+            <span class="pill" id="actionStatus">No report yet</span>
+          </div>
         </div>
         <div class="result-body">
           <div class="main-result">
-            <div id="compareOut" class="box">Not run yet.</div>
-            <div style="height:16px"></div>
-            <div id="visionOut" class="box">Image review not run yet.</div>
+            <div id="finalReportOut" class="raw-box">Upload two PDFs and click Generate Final Report.</div>
           </div>
           <aside class="result-panel">
             <div class="subpanel">
-              <h4>Image review plan</h4>
-              <p>這版會先把 PDF 頁面 render 成圖片並送到 image-analysis function。之後可再升級為真正的 multimodal compare，處理款圖、箭嘴標註、圈位與圖片上的 comment。[web:170][web:188][web:191]</p>
+              <h4>Copy summary</h4>
+              <p>Clipboard API 的 `writeText()` 可直接把 summary 複製到系統剪貼簿，但它通常需要 secure context 與使用者點擊觸發，所以很適合放在這種 Copy 按鈕內。[web:239][web:240][web:251]</p>
             </div>
             <div class="subpanel">
-              <h4>Current scope</h4>
-              <p>先做指定頁面預覽與圖片 payload 流程，這樣之後你要接 vision model 或 OCR 時，就不用重做前端與 function 結構。[web:187][web:190][web:193]</p>
+              <h4>Export / Print</h4>
+              <p>網頁報告常見做法是建立 print-friendly HTML，然後用 browser print dialog 匯出 PDF；這比一開始就自建複雜 PDF engine 更簡單實用。[web:246][web:249][web:252]</p>
             </div>
           </aside>
         </div>
       </section>
     </section>
 
-    <div class="footer">This skeleton prepares a PDF page-to-image workflow before full image-based comment comparison is added.</div>
+    <div class="footer">Point-form summary is optimized for quick scanning and handover use.</div>
   </main>
 
   <script type="module" src="./app.js"></script>
