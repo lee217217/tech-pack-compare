@@ -190,11 +190,14 @@ function normalizeMeasurementLine(line = '') {
 }
 
 const COMMON_SIZE_HEADERS = ['XXS','XS','S','M','L','XL','XXL','2XL','3XL','4XL','5XL'];
-const MEASUREMENT_HINTS = /(pom|point of measure|neck|chest|waist|hip|sleeve|length|opening|bottom|shoulder|inseam|outseam|tolerance|body length|across|armhole|sweep|bicep|cuff)/i;
+const MEASUREMENT_HINTS = /(pom|point of measure|pts of measure|measurements|measurement spec|neck|chest|waist|hip|sleeve|length|opening|bottom|shoulder|inseam|outseam|tolerance|body length|across|armhole|sweep|bicep|cuff)/i;
 const NON_MEASUREMENT_HINTS = /(bom|costing|fabric|trim|supplier|article|centric|detail|packaging|polybag|hangtag|label artwork|revision date)/i;
 
 function looksLikeMeasurementLine(clean = '') {
-  return MEASUREMENT_HINTS.test(clean) && !NON_MEASUREMENT_HINTS.test(clean);
+  const numberCount = (clean.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || []).length;
+  const sizeCount = (clean.match(/\b(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL)\b/gi) || []).length;
+  const likelyMeasurementByStructure = numberCount >= 2 && (sizeCount >= 1 || /tol|tolerance|spec|measure/i.test(clean));
+  return (MEASUREMENT_HINTS.test(clean) || likelyMeasurementByStructure) && !NON_MEASUREMENT_HINTS.test(clean);
 }
 
 function parseMeasurementLine(line = '') {
@@ -205,14 +208,17 @@ function parseMeasurementLine(line = '') {
   const sizeTokens = tokens.filter(token => COMMON_SIZE_HEADERS.includes(token.toUpperCase()));
   const numberTokens = clean.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || [];
 
-  const pomMatch = clean.match(/^(POM\s*[A-Z0-9.-]+|POINT OF MEASURE\s*[A-Z0-9.-]*|[A-Z]\.|[A-Z][0-9])/i);
-  const pomName = normalizeMeasurementLine(pomMatch?.[1] || 'POM');
+  const pomMatch = clean.match(/^(POM\s*[A-Z0-9.-]+|POINT OF MEASURE\s*[A-Z0-9.-]*|PTS OF MEASURE\s*[A-Z0-9.-]*|[A-Z]\.|[A-Z][0-9])/i);
+  const numberCount = (clean.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || []).length;
+  const fallbackPom = numberCount >= 2 ? 'POM' : '';
+  const pomName = normalizeMeasurementLine(pomMatch?.[1] || fallbackPom);
   const withoutPom = pomMatch ? clean.replace(pomMatch[1], '').trim() : clean;
 
   let description = withoutPom;
   const cutIdx = withoutPom.search(/\s(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|-?\d+(?:\.\d+)?(?:\/\d+)?)/i);
   if (cutIdx > 0) description = withoutPom.slice(0, cutIdx).trim();
   description = normalizeMeasurementLine(description || clean);
+  if (!description || description === '-') description = normalizeMeasurementLine(withoutPom || clean);
 
   const sizeValueMap = {};
   if (sizeTokens.length && numberTokens.length) {
@@ -223,8 +229,10 @@ function parseMeasurementLine(line = '') {
     numberTokens.forEach((value, i) => { sizeValueMap[`Value ${i+1}`] = value; });
   }
 
-  const key = normalizeMeasurementLine(`${pomName} ${description}` || clean).toLowerCase();
-  return { pomName, description, sizeValueMap, raw: clean, key };
+  const keyBase = normalizeMeasurementLine(`${pomName} ${description}` || clean).toLowerCase();
+  const key = keyBase || normalizeMeasurementLine(clean).toLowerCase();
+  if (!key) return null;
+  return { pomName: pomName || 'POM', description, sizeValueMap, raw: clean, key };
 }
 
 function extractMeasurementLines(entry, pages) {
