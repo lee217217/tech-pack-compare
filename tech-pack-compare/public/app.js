@@ -159,9 +159,16 @@ function pickPagesForProfile(profile, entry) {
 
 function buildTextForCompare(entry, selectedPages) {
   const map = entry.pageTextMap || [];
-  if (!selectedPages || !selectedPages.length) return entry.text || '';
-  const want = new Set(selectedPages);
-  return map.filter(p => want.has(p.page)).map(p => `--- Page ${p.page} ---\n${p.text}`).join('\n\n');
+  const safeFullText = String(entry?.text || '').trim();
+  if (!selectedPages || !selectedPages.length) return safeFullText;
+  const want = new Set((selectedPages || []).map(Number));
+  const parts = map
+    .filter(p => want.has(Number(p.page)))
+    .map(p => `--- Page ${p.page} ---\n${String(p.text || '').trim()}`)
+    .filter(Boolean)
+    .filter(v => v.replace(/--- Page \d+ ---/g, '').trim().length > 0);
+  const joined = parts.join('\n\n').trim();
+  return joined || safeFullText;
 }
 
 function getPageText(entry, pageNum) {
@@ -563,8 +570,15 @@ async function runFullCompare() {
     const pickA = pickPagesForProfile(state.customerProfile, state.A);
     const pickB = pickPagesForProfile(state.customerProfile, state.B);
 
-    const textA = buildTextForCompare(state.A, uniqueItems([...pickA.textPages, ...pickA.measurementPages]));
-    const textB = buildTextForCompare(state.B, uniqueItems([...pickB.textPages, ...pickB.measurementPages]));
+    let textA = buildTextForCompare(state.A, uniqueItems([...pickA.textPages, ...pickA.measurementPages]));
+    let textB = buildTextForCompare(state.B, uniqueItems([...pickB.textPages, ...pickB.measurementPages]));
+
+    if (!String(textA || '').trim()) textA = String(state.A.text || '').trim();
+    if (!String(textB || '').trim()) textB = String(state.B.text || '').trim();
+
+    if (!String(textA || '').trim() || !String(textB || '').trim()) {
+      throw new Error('Unable to extract usable text from one or both PDFs');
+    }
 
     setActionStatus('Comparing text and measurement pages...');
     const textData = await callJson('/.netlify/functions/compare-techpacks', {
