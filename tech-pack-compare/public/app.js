@@ -179,15 +179,26 @@ function normalizeMeasurementLine(line = '') {
   return String(line || '').replace(/\s+/g, ' ').trim();
 }
 
+function parseMeasurementLine(line = '') {
+  const clean = normalizeMeasurementLine(line);
+  const labelMatch = clean.match(/^(.*?)(?=\s+(?:-?\d+(?:\.\d+)?(?:\/\d+)?|XXS|XS|S|M|L|XL|XXL|2XL|3XL)\b|$)/i);
+  const label = normalizeMeasurementLine(labelMatch?.[1] || clean);
+  const values = clean.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || [];
+  return { label, values, raw: clean };
+}
+
 function extractMeasurementLines(entry, pages) {
   const lines = [];
   (pages || []).forEach(pageNum => {
     const text = getPageText(entry, pageNum);
     String(text || '')
-      .split(/(?=\b(?:POM|POINT OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE)\b)/i)
+      .split(/(?=\b(?:POM|POINT OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE)\b)/i)
       .map(normalizeMeasurementLine)
       .filter(Boolean)
-      .forEach(line => lines.push({ page: pageNum, line }));
+      .forEach(line => {
+        const parsed = parseMeasurementLine(line);
+        if (parsed.label) lines.push({ page: pageNum, line, ...parsed });
+      });
   });
   return lines;
 }
@@ -195,27 +206,46 @@ function extractMeasurementLines(entry, pages) {
 function compareMeasurementSections(entryA, entryB, pagesA, pagesB) {
   const linesA = extractMeasurementLines(entryA, pagesA);
   const linesB = extractMeasurementLines(entryB, pagesB);
-  const mapA = new Map(linesA.map(item => [item.line.toLowerCase(), item]));
-  const mapB = new Map(linesB.map(item => [item.line.toLowerCase(), item]));
+  const groupedA = new Map();
+  const groupedB = new Map();
 
-  const onlyA = linesA.filter(item => !mapB.has(item.line.toLowerCase())).slice(0, 8);
-  const onlyB = linesB.filter(item => !mapA.has(item.line.toLowerCase())).slice(0, 8);
-  const changes = [];
-  const max = Math.max(onlyA.length, onlyB.length);
+  linesA.forEach(item => { if (!groupedA.has(item.label.toLowerCase())) groupedA.set(item.label.toLowerCase(), item); });
+  linesB.forEach(item => { if (!groupedB.has(item.label.toLowerCase())) groupedB.set(item.label.toLowerCase(), item); });
 
-  for (let i = 0; i < max; i++) {
-    changes.push({
-      before: onlyA[i]?.line || '(no matching line in A)',
-      after: onlyB[i]?.line || '(no matching line in B)',
-      impact: /tolerance|neck|chest|waist|hip|sleeve|length/.test(`${onlyA[i]?.line || ''} ${onlyB[i]?.line || ''}`.toLowerCase()) ? 'high' : 'medium'
-    });
-  }
+  const labels = [...new Set([...groupedA.keys(), ...groupedB.keys()])];
+  const rows = labels.slice(0, 16).map(key => {
+    const a = groupedA.get(key);
+    const b = groupedB.get(key);
+    const beforeValues = (a?.values || []).join(' / ');
+    const afterValues = (b?.values || []).join(' / ');
+    const beforeRaw = a?.raw || '';
+    const afterRaw = b?.raw || '';
+    const changed = beforeRaw !== afterRaw;
+    const impact = /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam/.test(key) ? 'high' : 'medium';
+    return {
+      label: a?.label || b?.label || key,
+      pageA: a?.page || '-',
+      pageB: b?.page || '-',
+      beforeValues: beforeValues || '-',
+      afterValues: afterValues || '-',
+      beforeRaw: beforeRaw || '-',
+      afterRaw: afterRaw || '-',
+      changed,
+      impact: changed ? impact : 'low'
+    };
+  }).filter(row => row.changed);
 
-  const summary = changes.length
-    ? `${changes.length} measurement-related difference item(s) were identified from selected measurement pages.`
+  const changes = rows.map(row => ({
+    before: `${row.label}: ${row.beforeValues}`,
+    after: `${row.label}: ${row.afterValues}`,
+    impact: row.impact
+  }));
+
+  const summary = rows.length
+    ? `${rows.length} measurement row(s) show differences between the selected spec pages.`
     : 'No clear measurement difference was identified from the selected measurement pages.';
 
-  return { summary, changes };
+  return { summary, changes, rows };
 }
 
 async function buildPreviewForSide(side, pageNum, setVisible = false) {
@@ -379,6 +409,7 @@ function buildPointFormSummary({ textData, imageData, measurementData, imageSkip
   const imageActions = Array.isArray(imageResult.action_items) ? imageResult.action_items : [];
   const measurementSummary = measurementData?.summary || '';
   const measurementChanges = Array.isArray(measurementData?.changes) ? measurementData.changes : [];
+  const measurementRows = Array.isArray(measurementData?.rows) ? measurementData.rows : [];
 
   const topSummary = uniqueItems([
     textSummary.overview || '',
@@ -429,6 +460,7 @@ function renderFinalReport({ textData, imageData, measurementData, imageSkipped 
   const imageChanges = Array.isArray(imageResult.visual_changes) ? imageResult.visual_changes : [];
   const imageActions = Array.isArray(imageResult.action_items) ? imageResult.action_items : [];
   const measurementChanges = Array.isArray(measurementData?.changes) ? measurementData.changes : [];
+  const measurementRows = Array.isArray(measurementData?.rows) ? measurementData.rows : [];
 
   const summaryPack = buildPointFormSummary({ textData, imageData, measurementData, imageSkipped, imageError });
   state.latestSummaryText = summaryPack.plainText;
@@ -450,26 +482,32 @@ function renderFinalReport({ textData, imageData, measurementData, imageSkipped 
 
       <section class="report-block">
         <h3>Measurement Changes</h3>
-        ${measurementChanges.length ? `
-          <div class="diff-list">
-            ${measurementChanges.map(item => `
-              <div class="diff-card">
-                <div class="diff-top">
-                  <strong>Measurement Difference</strong>
-                  ${badgeHtml(item.impact || 'medium')}
-                </div>
-                <div class="diff-grid">
-                  <div>
-                    <div class="muted-label">Before</div>
-                    <p>${escapeHtml(item.before || '-')}</p>
-                  </div>
-                  <div>
-                    <div class="muted-label">After</div>
-                    <p>${escapeHtml(item.after || '-')}</p>
-                  </div>
-                </div>
-              </div>
-            `).join('')}
+        ${measurementRows.length ? `
+          <div class="compact-table-wrap">
+            <table class="compact-table">
+              <thead>
+                <tr>
+                  <th>Measurement Item</th>
+                  <th>Page A</th>
+                  <th>Page B</th>
+                  <th>Values in A</th>
+                  <th>Values in B</th>
+                  <th>Impact</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${measurementRows.map(row => `
+                  <tr>
+                    <td>${escapeHtml(row.label || '-')}</td>
+                    <td>${escapeHtml(String(row.pageA || '-'))}</td>
+                    <td>${escapeHtml(String(row.pageB || '-'))}</td>
+                    <td>${escapeHtml(row.beforeValues || '-')}</td>
+                    <td>${escapeHtml(row.afterValues || '-')}</td>
+                    <td>${badgeHtml(row.impact || 'medium')}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
           </div>
         ` : '<p>No clear measurement changes found.</p>'}
       </section>
