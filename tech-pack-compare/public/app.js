@@ -391,7 +391,7 @@ function compareExtractedMeasurementRows(rowsA, rowsB) {
   return { summary, changes, rows };
 }
 
-functionn bindDropzone(dropId, input, side) {
+function bindDropzone(dropId, input, side) {
   const zone = document.getElementById(dropId);
   ['dragenter', 'dragover'].forEach(name => zone.addEventListener(name, e => { e.preventDefault(); zone.classList.add('dragover'); }));
   ['dragleave', 'drop'].forEach(name => zone.addEventListener(name, e => { e.preventDefault(); zone.classList.remove('dragover'); }));
