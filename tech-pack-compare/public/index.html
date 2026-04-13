@@ -14,15 +14,14 @@
     .topbar{position:sticky;top:0;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 24px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg) 84%, transparent);backdrop-filter:blur(16px)}
     .brand{display:flex;align-items:center;gap:14px}.mark{width:46px;height:46px;border-radius:15px;background:var(--text);color:var(--surface);display:grid;place-items:center;font-weight:800}.brand h1{margin:0;font-size:18px}.brand p{margin:4px 0 0;font-size:13px;color:var(--muted)}
     .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.btn,.pill,.theme-btn{padding:10px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text)}.btn,.theme-btn{cursor:pointer;font-weight:700}.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}.btn-secondary{background:var(--surface-2)}.pill{font-size:12px;color:var(--muted)}.theme-btn{display:inline-flex;align-items:center;gap:8px}
-    .page{max-width:1640px;margin:0 auto;padding:24px;display:grid;gap:20px}.hero{display:grid;grid-template-columns:1.08fr .92fr;gap:20px}.card{background:color-mix(in srgb,var(--surface) 95%, transparent);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md)}.panel{padding:24px}
+    .page{max-width:1640px;margin:0 auto;padding:24px;display:grid;gap:20px}.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:20px}.card{background:color-mix(in srgb,var(--surface) 95%, transparent);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md)}.panel{padding:24px}
     .eyebrow{display:inline-flex;padding:8px 12px;border-radius:999px;background:var(--primary-soft);color:var(--primary-strong);font-size:12px;font-weight:800;margin-bottom:16px}h2{margin:0;font-size:clamp(28px,4vw,48px);line-height:1.04;max-width:13ch}.muted{color:var(--muted);line-height:1.7}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}
     .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.stat{padding:18px;border:1px solid var(--border);border-radius:20px;background:var(--surface);box-shadow:var(--shadow-sm)}.stat span{display:block;color:var(--muted);font-size:13px;margin-bottom:8px;font-weight:700}.stat strong{font-size:28px}
     .workspace{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:20px;align-items:start}.side-stack{display:grid;gap:20px;position:sticky;top:92px;max-height:calc(100vh - 110px);overflow:auto;padding-right:2px}
     .section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}.section-head h3{margin:0;font-size:20px}.section-head p{margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.6}
     .drop-grid{display:grid;gap:14px}.drop{position:relative;min-height:168px;border:1.5px dashed color-mix(in srgb,var(--primary) 28%, var(--border));border-radius:22px;padding:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));display:flex;flex-direction:column;justify-content:space-between;gap:12px}.drop.dragover{border-color:var(--primary)}.drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
     .file-chip{display:inline-flex;padding:8px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:12px;font-weight:700;width:max-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.meta{display:grid;gap:8px;font-size:13px;color:var(--muted)}
-    textarea,select{width:100%;border-radius:18px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);padding:14px 16px}.field{display:grid;gap:8px}.field label{font-size:13px;font-weight:700;color:var(--muted)} textarea{min-height:130px;resize:vertical;line-height:1.7}
-    .helper-grid{display:grid;gap:10px}.helper-card{padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:var(--surface)}.helper-card h4{margin:0 0 8px;font-size:14px}.helper-card p,.helper-card li{margin:0;color:var(--muted);font-size:13px;line-height:1.7}.helper-card ul{margin:0 0 0 18px;padding:0}
+    textarea,select{width:100%;border-radius:18px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);padding:14px 16px}.field{display:grid;gap:8px}.field label{font-size:13px;font-weight:700;color:var(--muted)} textarea{min-height:140px;resize:vertical;line-height:1.7}
     .result-shell{padding:0;overflow:hidden;min-width:0}.result-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:22px 24px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 88%, transparent),color-mix(in srgb,var(--surface-2) 70%, transparent))}.result-top h3{margin:0;font-size:22px}.result-top p{margin:8px 0 0;color:var(--muted);font-size:14px;line-height:1.6}.result-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .result-body{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:860px}.main-result{padding:24px;overflow:auto;background:var(--surface);min-width:0}.result-panel{padding:24px;border-left:1px solid var(--border);background:var(--surface-2);display:grid;align-content:start;gap:18px}
     .subpanel{padding:16px;border:1px solid var(--border);border-radius:20px;background:var(--surface);box-shadow:var(--shadow-sm)}.subpanel h4{margin:0 0 10px;font-size:14px}.subpanel p{margin:0;color:var(--muted);font-size:13px;line-height:1.7}
@@ -31,10 +30,9 @@
     .report-block{padding:16px;border:1px solid var(--border);border-radius:20px;background:var(--surface-2)}.report-block h3{margin:0 0 12px;font-size:17px}.report-block p{margin:0;color:var(--muted);line-height:1.75}.report-block ul{margin:0 0 0 18px;padding:0;color:var(--muted);line-height:1.8}
     .inline-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.muted-label{font-size:12px;font-weight:800;color:var(--muted);margin-bottom:6px}
     .diff-list{display:grid;gap:12px}.diff-card{padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:var(--surface)}.diff-top{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.diff-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .compact-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:18px;background:var(--surface)}.compact-table{width:100%;border-collapse:collapse;font-size:13px}.compact-table th,.compact-table td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}.compact-table th{background:var(--surface-2);font-size:12px;color:var(--muted);font-weight:800}.compact-table tr:last-child td{border-bottom:none}
     .badge{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:800}.badge-high{background:rgba(156,53,82,.12);color:var(--danger)}.badge-medium{background:rgba(156,97,27,.12);color:var(--warning)}.badge-low{background:rgba(47,125,69,.12);color:var(--success)}
     .footer{font-size:12px;color:var(--muted);text-align:right}
-    @media print {.topbar,.side-stack,.result-panel,.result-actions,.footer{display:none!important}.page,.workspace,.result-body{display:block}.main-result{padding:0;background:#fff}.result-shell,.report-block,.diff-card,.subpanel,.compact-table-wrap{box-shadow:none!important;border-color:#ccc!important}body{background:#fff;color:#000}}
+    @media print {.topbar,.side-stack,.result-panel,.result-actions,.footer{display:none!important}.page,.workspace,.result-body{display:block}.main-result{padding:0;background:#fff}.report-block,.diff-card,.subpanel{box-shadow:none!important;border-color:#ccc!important}body{background:#fff;color:#000}}
     @media (max-width:1320px){.workspace{grid-template-columns:minmax(320px,380px) minmax(0,1fr)}.result-body{grid-template-columns:minmax(0,1fr) 300px}}
     @media (max-width:1100px){.hero,.workspace,.result-body{grid-template-columns:1fr}.side-stack{position:static;max-height:none;overflow:visible}.result-panel{border-left:none;border-top:1px solid var(--border)}}
     @media (max-width:760px){.page,.topbar{padding-left:16px;padding-right:16px}.topbar{align-items:flex-start;flex-direction:column}.panel,.main-result,.result-panel{padding:18px}.result-top{padding:18px}.stats,.thumb-grid,.inline-columns,.diff-grid{grid-template-columns:1fr}}
@@ -46,13 +44,12 @@
       <div class="mark">TP</div>
       <div>
         <h1>Tech Pack Compare</h1>
-        <p>Auto page selection, point-form summary, copy and export support</p>
+        <p>For Sales and Merchandising follow-up</p>
       </div>
     </div>
     <div class="toolbar">
-      <span class="pill">Auto page classifier</span>
-      <span class="pill">Text + image review</span>
-      <span class="pill">Copy + Export</span>
+      <span class="pill">Measurement compare</span>
+      <span class="pill">Multi-page image review</span>
       <button class="theme-btn" id="themeToggle" aria-label="切換深色模式"><span id="themeIcon">🌙</span><span id="themeText">Dark</span></button>
       <button class="btn btn-primary" id="compareBtn">Generate Final Report</button>
     </div>
@@ -61,9 +58,9 @@
   <main class="page">
     <section class="hero">
       <div class="card panel">
-        <div class="eyebrow">One-pass workflow</div>
-        <h2>Automatically classify pages, select likely text and image review pages, then generate one final report.</h2>
-        <p class="muted">這個版本會先用 browser 逐頁抽取 PDF 文字，再根據 comment / measurement / image-like 頁面邏輯做自動選頁，只把較相關的內容送去比較，方便減少手動選頁與重複測試成本。[web:120][web:117][web:308]</p>
+        <div class="eyebrow">Tech pack review</div>
+        <h2>Compare two tech packs and generate a clear summary for follow-up.</h2>
+        <p class="muted">Upload two PDF versions, add buyer comments if needed, and generate a final report covering measurement changes, key text updates, image comments, and follow-up actions.</p>
         <div class="hero-actions">
           <button class="btn btn-primary" id="compareBtn2">Generate Final Report</button>
           <button class="btn btn-secondary" id="visionBtn">Run Image Review Only</button>
@@ -76,7 +73,7 @@
         <div class="section-head">
           <div>
             <h3>Workspace stats</h3>
-            <p>Quick indicators for uploaded files, total pages, and currently shown preview pages.</p>
+            <p>Quick indicators for uploaded files, total pages, and current preview pages.</p>
           </div>
         </div>
         <div class="stats">
@@ -94,10 +91,9 @@
           <div class="section-head">
             <div>
               <h3>Upload PDFs</h3>
-              <p>Upload Tech Pack A and B. The system will extract page text, classify pages, and preselect likely compare targets automatically.</p>
+              <p>Upload Tech Pack A and B. The system will prepare the compare flow automatically.</p>
             </div>
           </div>
-
           <div class="drop-grid">
             <label class="drop" id="dropA">
               <input id="fileA" type="file" accept="application/pdf" />
@@ -110,7 +106,6 @@
                 <span id="fileAMeta">Pages: - · Characters: -</span>
               </div>
             </label>
-
             <label class="drop" id="dropB">
               <input id="fileB" type="file" accept="application/pdf" />
               <div>
@@ -129,12 +124,12 @@
           <div class="section-head">
             <div>
               <h3>Buyer comments</h3>
-              <p>Paste buyer comments, remarks, or follow-up instructions. The system also uses this to infer whether the case is text-first, image-markup, or hybrid.</p>
+              <p>Add comments, remarks, or special buyer instructions before generating the report.</p>
             </div>
           </div>
           <div class="field">
-            <label for="commentsInput">Comments / remarks / special notes</label>
-            <textarea id="commentsInput" placeholder="e.g. buyer comments in remark column / see markup on sketch / amend neck label placement / update POM"></textarea>
+            <label for="commentsInput">Comments / remarks / notes</label>
+            <textarea id="commentsInput" placeholder="e.g. update care label placement, buyer marked artwork on image, revise chest measurement"></textarea>
           </div>
         </div>
 
@@ -142,7 +137,7 @@
           <div class="section-head">
             <div>
               <h3>Manual preview</h3>
-              <p>You can still manually inspect pages here. Main compare flow uses system auto-selection first.</p>
+              <p>Use this to inspect pages manually. Final compare will still use the system-selected logic in the background.</p>
             </div>
           </div>
           <div class="field">
@@ -154,41 +149,6 @@
             <select id="visionPageB"></select>
           </div>
         </div>
-
-        <div class="card panel">
-          <div class="section-head">
-            <div>
-              <h3>How auto-selection works</h3>
-              <p>System rules are designed for common apparel tech pack structures and can be refined later by buyer / customer profile.</p>
-            </div>
-          </div>
-          <div class="helper-grid">
-            <div class="helper-card">
-              <h4>Text-first logic</h4>
-              <ul>
-                <li>Looks for comment / remarks / revise / amend keywords</li>
-                <li>Prefers pages with enough text content</li>
-                <li>Includes measurement / BOM pages when relevant</li>
-              </ul>
-            </div>
-            <div class="helper-card">
-              <h4>Image-markup logic</h4>
-              <ul>
-                <li>Looks for low-text pages, sketch / artwork / placement clues</li>
-                <li>Boosts pages after measurement tables</li>
-                <li>Useful when buyer marks directly on images</li>
-              </ul>
-            </div>
-            <div class="helper-card">
-              <h4>Hybrid logic</h4>
-              <ul>
-                <li>Uses text pages and image pages together</li>
-                <li>Best default when customer method is mixed</li>
-                <li>Final report merges text and visual findings</li>
-              </ul>
-            </div>
-          </div>
-        </div>
       </aside>
 
       <section class="card result-shell">
@@ -198,8 +158,8 @@
             <p id="actionStatus">Upload both PDFs to begin</p>
           </div>
           <div class="result-actions">
-            <button class="btn" id="copySummaryBtnTop" onclick="document.getElementById('copySummaryBtn').click()">Copy Summary</button>
-            <button class="btn" id="exportReportBtnTop" onclick="document.getElementById('exportReportBtn').click()">Export / Print</button>
+            <button class="btn" onclick="document.getElementById('copySummaryBtn').click()">Copy Summary</button>
+            <button class="btn" onclick="document.getElementById('exportReportBtn').click()">Export / Print</button>
           </div>
         </div>
 
@@ -207,16 +167,15 @@
           <div class="main-result" id="finalReportOut">
             <div class="report-block">
               <h3>Waiting for report</h3>
-              <p>After you upload both PDFs and click <strong>Generate Final Report</strong>, the system will classify pages, select likely text/image review pages, and generate a point-form report here.</p>
+              <p>After you upload both PDFs and click <strong>Generate Final Report</strong>, the report will appear here.</p>
             </div>
           </div>
 
           <aside class="result-panel">
             <div class="subpanel">
               <h4>Preview images</h4>
-              <p>The currently shown previews update automatically based on selected auto image pages, but you can still override manually using the preview selectors.</p>
+              <p>Preview pages update automatically when image review starts. You can also inspect pages manually using the selectors.</p>
             </div>
-
             <div class="thumb-grid">
               <div class="thumb">
                 <img id="previewImgA" alt="Preview A" />
@@ -227,17 +186,16 @@
                 <small id="previewMetaB">Page -</small>
               </div>
             </div>
-
             <div class="subpanel">
-              <h4>Suggested use</h4>
-              <p>如果客戶主要在 comment 欄寫字，系統會偏向 text-first；如果客戶慣常把 comment 標在圖上，系統會偏向 image-markup；否則會用 hybrid 模式整合兩者。[web:120][web:308]</p>
+              <h4>Report focus</h4>
+              <p>This report is designed for Sales and Merchandising teams to review revision impact faster and prepare follow-up actions.</p>
             </div>
           </aside>
         </div>
       </section>
     </section>
 
-    <div class="footer">Tech Pack Compare Workspace · auto selection + point-form report</div>
+    <div class="footer">Tech Pack Compare Workspace</div>
   </main>
 
   <script type="module" src="./app.js"></script>

@@ -31,8 +31,8 @@ const themeIcon = document.getElementById('themeIcon');
 const themeText = document.getElementById('themeText');
 
 const state = {
-  A: { name: null, pages: 0, text: '', pdf: null, preview: null, pageTextMap: [], pageScores: [], autoTextPages: [], autoImagePages: [] },
-  B: { name: null, pages: 0, text: '', pdf: null, preview: null, pageTextMap: [], pageScores: [], autoTextPages: [], autoImagePages: [] },
+  A: { name: null, pages: 0, text: '', pdf: null, preview: null, pageTextMap: [], pageScores: [], autoTextPages: [], autoImagePages: [], autoMeasurementPages: [] },
+  B: { name: null, pages: 0, text: '', pdf: null, preview: null, pageTextMap: [], pageScores: [], autoTextPages: [], autoImagePages: [], autoMeasurementPages: [] },
   customerProfile: 'hybrid',
   latestSummaryText: '',
   latestReportHtml: ''
@@ -100,11 +100,11 @@ function detectCustomerProfile(comments = '') {
 
 function classifyPages(entry) {
   const pages = entry.pageTextMap || [];
-  if (!pages.length) return { scores: [], autoTextPages: [], autoImagePages: [] };
+  if (!pages.length) return { scores: [], autoTextPages: [], autoImagePages: [], autoMeasurementPages: [] };
 
   const scores = pages.map(({ page, text, length }) => {
     const lower = text.toLowerCase();
-    const hasMeasurement = /measurement|measure|spec|pom|size|neck|chest|waist|hip|sleeve|inseam|outseam/.test(lower);
+    const hasMeasurement = /measurement|measure|spec|pom|size|neck|chest|waist|hip|sleeve|inseam|outseam|tolerance/.test(lower);
     const hasComment = /comment|remarks|revise|amend|change to|pls change|approved with comment|buyer comment/.test(lower);
     const hasArtwork = /sketch|artwork|graphic|photo|placement|print|embroidery|label position/.test(lower);
     const hasBom = /bom|fabric|trim|zipper|button|care label|hangtag|packaging|polybag/.test(lower);
@@ -112,35 +112,23 @@ function classifyPages(entry) {
     let pageType = 'general';
     let textScore = 0;
     let imageScore = 0;
-    const reasons = [];
+    let measurementScore = 0;
 
     if (hasMeasurement) {
       pageType = 'measurement';
       textScore += 2;
-      reasons.push('measurement keywords');
+      measurementScore += 4;
     }
     if (hasComment && length > 40) {
       pageType = pageType === 'measurement' ? 'measurement+comment' : 'text-comment';
       textScore += 3;
-      reasons.push('comment keywords');
     }
-    if (hasBom) {
-      textScore += 1;
-      reasons.push('BOM / trim keywords');
-    }
-    if (hasArtwork) {
-      imageScore += 2;
-      reasons.push('artwork / sketch keywords');
-    }
-    if (length < 80) {
-      imageScore += 2;
-      reasons.push('low text density');
-    }
-    if (length < 30) {
-      imageScore += 1;
-    }
+    if (hasBom) textScore += 1;
+    if (hasArtwork) imageScore += 2;
+    if (length < 80) imageScore += 2;
+    if (length < 30) imageScore += 1;
 
-    return { page, length, pageType, textScore, imageScore, reasons };
+    return { page, length, pageType, textScore, imageScore, measurementScore };
   });
 
   let lastMeasurementPage = -1;
@@ -149,160 +137,78 @@ function classifyPages(entry) {
       lastMeasurementPage = item.page;
     } else if (lastMeasurementPage > 0 && item.page > lastMeasurementPage && item.length < 120) {
       item.imageScore += 2;
-      item.reasons.push('after measurement page with low text');
     }
   });
 
-  const autoTextPages = scores
-    .filter(item => item.textScore > 0)
-    .sort((a, b) => b.textScore - a.textScore || a.page - b.page)
-    .slice(0, 3)
-    .map(item => item.page);
+  const autoTextPages = scores.filter(item => item.textScore > 0).sort((a, b) => b.textScore - a.textScore || a.page - b.page).slice(0, 3).map(item => item.page);
+  const autoImagePages = scores.filter(item => item.imageScore > 0).sort((a, b) => b.imageScore - a.imageScore || a.page - b.page).slice(0, 3).map(item => item.page);
+  const autoMeasurementPages = scores.filter(item => item.measurementScore > 0).sort((a, b) => b.measurementScore - a.measurementScore || a.page - b.page).slice(0, 2).map(item => item.page);
 
-  const autoImagePages = scores
-    .filter(item => item.imageScore > 0)
-    .sort((a, b) => b.imageScore - a.imageScore || a.page - b.page)
-    .slice(0, 2)
-    .map(item => item.page);
-
-  return { scores, autoTextPages, autoImagePages };
+  return { scores, autoTextPages, autoImagePages, autoMeasurementPages };
 }
 
 function pickPagesForProfile(profile, entry) {
   const textPages = entry.autoTextPages || [];
   const imagePages = entry.autoImagePages || [];
+  const measurementPages = entry.autoMeasurementPages || [];
 
-  if (profile === 'text-first') {
-    return { textPages: textPages.length ? textPages : imagePages, imagePages };
-  }
-  if (profile === 'image-markup') {
-    return { textPages, imagePages: imagePages.length ? imagePages : textPages };
-  }
-  return { textPages, imagePages };
+  if (profile === 'text-first') return { textPages: textPages.length ? textPages : measurementPages, imagePages, measurementPages };
+  if (profile === 'image-markup') return { textPages, imagePages: imagePages.length ? imagePages : textPages, measurementPages };
+  return { textPages, imagePages, measurementPages };
 }
 
 function buildTextForCompare(entry, selectedPages) {
   const map = entry.pageTextMap || [];
   if (!selectedPages || !selectedPages.length) return entry.text || '';
   const want = new Set(selectedPages);
-  const parts = map.filter(p => want.has(p.page)).map(p => `--- Page ${p.page} ---\n${p.text}`);
-  return parts.join('\n\n');
+  return map.filter(p => want.has(p.page)).map(p => `--- Page ${p.page} ---\n${p.text}`).join('\n\n');
 }
 
-function selectionDisplay(pages) {
-  return pages && pages.length ? pages.join(', ') : '-';
+function getPageText(entry, pageNum) {
+  return (entry.pageTextMap || []).find(p => p.page === pageNum)?.text || '';
 }
 
-function buildSelectionMetaHtml(profile, pickA, pickB) {
-  return `
-    <section class="report-block">
-      <h3>System Page Selection</h3>
-      <ul>
-        <li>Customer profile: ${escapeHtml(profile)}</li>
-        <li>Text pages A: ${escapeHtml(selectionDisplay(pickA.textPages))}</li>
-        <li>Text pages B: ${escapeHtml(selectionDisplay(pickB.textPages))}</li>
-        <li>Image pages A: ${escapeHtml(selectionDisplay(pickA.imagePages))}</li>
-        <li>Image pages B: ${escapeHtml(selectionDisplay(pickB.imagePages))}</li>
-      </ul>
-    </section>
-  `;
+function normalizeMeasurementLine(line = '') {
+  return String(line || '').replace(/\s+/g, ' ').trim();
 }
 
-function buildDebugPageHtml(side) {
-  const items = state[side].pageScores || [];
-  if (!items.length) return '';
-  return `
-    <section class="report-block">
-      <h3>Page Classification ${escapeHtml(side)}</h3>
-      <div class="compact-table-wrap">
-        <table class="compact-table">
-          <thead>
-            <tr>
-              <th>Page</th>
-              <th>Type</th>
-              <th>Chars</th>
-              <th>Text Score</th>
-              <th>Image Score</th>
-              <th>Reason</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${items.map(item => `
-              <tr>
-                <td>${item.page}</td>
-                <td>${escapeHtml(item.pageType)}</td>
-                <td>${item.length}</td>
-                <td>${item.textScore}</td>
-                <td>${item.imageScore}</td>
-                <td>${escapeHtml(item.reasons.join(', ') || '-')}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  `;
+function extractMeasurementLines(entry, pages) {
+  const lines = [];
+  (pages || []).forEach(pageNum => {
+    const text = getPageText(entry, pageNum);
+    String(text || '')
+      .split(/(?=\b(?:POM|POINT OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE)\b)/i)
+      .map(normalizeMeasurementLine)
+      .filter(Boolean)
+      .forEach(line => lines.push({ page: pageNum, line }));
+  });
+  return lines;
 }
 
-function buildPointFormSummary({ textData, imageData, imageSkipped = false, imageError = '', profile = 'hybrid', pickA = { textPages: [], imagePages: [] }, pickB = { textPages: [], imagePages: [] } }) {
-  const textResult = textData?.result || {};
-  const textSummary = textResult.summary || {};
-  const textDiffs = Array.isArray(textResult.differences) ? textResult.differences : [];
-  const buyerComments = Array.isArray(textResult.buyer_comments) ? textResult.buyer_comments : [];
-  const textActions = Array.isArray(textResult.action_items) ? textResult.action_items : [];
-  const imageResult = imageData?.result || {};
-  const imageComments = Array.isArray(imageResult.visible_comments) ? imageResult.visible_comments : [];
-  const imageChanges = Array.isArray(imageResult.visual_changes) ? imageResult.visual_changes : [];
-  const imageActions = Array.isArray(imageResult.action_items) ? imageResult.action_items : [];
+function compareMeasurementSections(entryA, entryB, pagesA, pagesB) {
+  const linesA = extractMeasurementLines(entryA, pagesA);
+  const linesB = extractMeasurementLines(entryB, pagesB);
+  const mapA = new Map(linesA.map(item => [item.line.toLowerCase(), item]));
+  const mapB = new Map(linesB.map(item => [item.line.toLowerCase(), item]));
 
-  const topSummary = uniqueItems([
-    textSummary.overview || '',
-    imageResult.summary || '',
-    `Customer profile: ${profile}`,
-    `Text pages A: ${selectionDisplay(pickA.textPages)} | B: ${selectionDisplay(pickB.textPages)}`,
-    `Image pages A: ${selectionDisplay(pickA.imagePages)} | B: ${selectionDisplay(pickB.imagePages)}`,
-    imageSkipped ? 'Image review was skipped because preview pages were not ready.' : '',
-    imageError ? `Image review failed: ${imageError}` : ''
-  ]);
+  const onlyA = linesA.filter(item => !mapB.has(item.line.toLowerCase())).slice(0, 8);
+  const onlyB = linesB.filter(item => !mapA.has(item.line.toLowerCase())).slice(0, 8);
+  const changes = [];
+  const max = Math.max(onlyA.length, onlyB.length);
 
-  const keyChangePoints = uniqueItems(textDiffs.slice(0, 8).map(item => {
-    const section = item.section || 'General';
-    const before = item.before || '-';
-    const after = item.after || '-';
-    return `${section}: ${before} → ${after}`;
-  }));
+  for (let i = 0; i < max; i++) {
+    changes.push({
+      before: onlyA[i]?.line || '(no matching line in A)',
+      after: onlyB[i]?.line || '(no matching line in B)',
+      impact: /tolerance|neck|chest|waist|hip|sleeve|length/.test(`${onlyA[i]?.line || ''} ${onlyB[i]?.line || ''}`.toLowerCase()) ? 'high' : 'medium'
+    });
+  }
 
-  const imagePoints = uniqueItems(imageChanges.slice(0, 8).map(item => {
-    const area = item.area || 'Visual area';
-    return `${area}: ${item.note || ''}`;
-  }).concat(imageComments.slice(0, 6)));
+  const summary = changes.length
+    ? `${changes.length} measurement-related difference item(s) were identified from selected measurement pages.`
+    : 'No clear measurement difference was identified from the selected measurement pages.';
 
-  const actionPoints = uniqueItems([...textActions, ...imageActions]);
-  const buyerPoints = uniqueItems(buyerComments.slice(0, 8));
-
-  const plainText = [
-    'Tech Pack Final Summary',
-    '',
-    'Overall Summary',
-    ...(topSummary.length ? topSummary : ['No overall summary generated.']).map(v => `- ${v}`),
-    '',
-    'Key Changes',
-    ...(keyChangePoints.length ? keyChangePoints : ['No key text changes found.']).map(v => `- ${v}`),
-    '',
-    'Image Comments / Visual Changes',
-    ...(imagePoints.length ? imagePoints : ['No image findings found.']).map(v => `- ${v}`),
-    '',
-    'Buyer Comments',
-    ...(buyerPoints.length ? buyerPoints : ['No buyer comments extracted.']).map(v => `- ${v}`),
-    '',
-    'Follow-up Actions',
-    ...(actionPoints.length ? actionPoints : ['No follow-up actions returned.']).map(v => `- ${v}`)
-  ].join('\n');
-
-  return {
-    plainText,
-    sections: { topSummary, keyChangePoints, imagePoints, buyerPoints, actionPoints }
-  };
+  return { summary, changes };
 }
 
 async function buildPreviewForSide(side, pageNum, setVisible = false) {
@@ -319,7 +225,7 @@ async function buildPreviewForSide(side, pageNum, setVisible = false) {
   const preview = { page: pageNum, dataUrl, width: canvas.width, height: canvas.height };
 
   if (setVisible) {
-    entry.preview = preview;
+    state[side].preview = preview;
     const img = side === 'A' ? previewImgA : previewImgB;
     const meta = side === 'A' ? previewMetaA : previewMetaB;
     img.src = dataUrl;
@@ -365,19 +271,20 @@ async function extractPdfText(file, side) {
       pageTextMap,
       pageScores: [],
       autoTextPages: [],
-      autoImagePages: []
+      autoImagePages: [],
+      autoMeasurementPages: []
     };
 
     const classified = classifyPages(nextEntry);
     nextEntry.pageScores = classified.scores;
     nextEntry.autoTextPages = classified.autoTextPages;
     nextEntry.autoImagePages = classified.autoImagePages;
+    nextEntry.autoMeasurementPages = classified.autoMeasurementPages;
     state[side] = nextEntry;
 
     nameEl.textContent = file.name;
-    meta.textContent = `Pages: ${pdf.numPages} · Characters: ${fullText.length.toLocaleString()} · Auto text pages: ${selectionDisplay(nextEntry.autoTextPages)} · Auto image pages: ${selectionDisplay(nextEntry.autoImagePages)}`;
+    meta.textContent = `Pages: ${pdf.numPages} · Characters: ${fullText.length.toLocaleString()} · Auto compare ready`;
     fillPageSelect(pageSelect, pdf.numPages);
-
     const firstPreviewPage = nextEntry.autoImagePages[0] || 1;
     pageSelect.value = String(firstPreviewPage);
     await renderPagePreview(side, firstPreviewPage);
@@ -417,7 +324,43 @@ async function callJson(url, payload) {
   return data;
 }
 
-function renderFinalReport({ textData, imageData, imageSkipped = false, imageError = '', profile = 'hybrid', pickA = { textPages: [], imagePages: [] }, pickB = { textPages: [], imagePages: [] } }) {
+async function runMultiImageCompare(pickA, pickB) {
+  const pairs = [];
+  const max = Math.min(Math.max(pickA.imagePages.length, pickB.imagePages.length), 3);
+  for (let i = 0; i < max; i++) {
+    const pageA = pickA.imagePages[i] || pickA.imagePages[0];
+    const pageB = pickB.imagePages[i] || pickB.imagePages[0];
+    if (!pageA || !pageB) continue;
+    const previewA = await buildPreviewForSide('A', pageA, i === 0);
+    const previewB = await buildPreviewForSide('B', pageB, i === 0);
+    const result = await callJson('/.netlify/functions/analyze-techpack-images', {
+      imageA: previewA?.dataUrl || '',
+      imageB: previewB?.dataUrl || '',
+      pageA,
+      pageB,
+      comments: commentsInput.value || ''
+    });
+    pairs.push({ pageA, pageB, result });
+  }
+
+  const summaries = uniqueItems(pairs.map(item => item.result?.result?.summary || ''));
+  const visible_comments = uniqueItems(pairs.flatMap(item => item.result?.result?.visible_comments || []));
+  const visual_changes = pairs.flatMap(item => (item.result?.result?.visual_changes || []).map(change => ({ ...change, area: `${change.area || 'Visual area'} (A${item.pageA} vs B${item.pageB})` })));
+  const action_items = uniqueItems(pairs.flatMap(item => item.result?.result?.action_items || []));
+
+  return {
+    ok: true,
+    mode: 'merged_multi_page_image_review',
+    result: {
+      summary: summaries.join(' '),
+      visible_comments,
+      visual_changes,
+      action_items
+    }
+  };
+}
+
+function buildPointFormSummary({ textData, imageData, measurementData, imageSkipped = false, imageError = '' }) {
   const textResult = textData?.result || {};
   const textSummary = textResult.summary || {};
   const textDiffs = Array.isArray(textResult.differences) ? textResult.differences : [];
@@ -427,25 +370,101 @@ function renderFinalReport({ textData, imageData, imageSkipped = false, imageErr
   const imageComments = Array.isArray(imageResult.visible_comments) ? imageResult.visible_comments : [];
   const imageChanges = Array.isArray(imageResult.visual_changes) ? imageResult.visual_changes : [];
   const imageActions = Array.isArray(imageResult.action_items) ? imageResult.action_items : [];
+  const measurementSummary = measurementData?.summary || '';
+  const measurementChanges = Array.isArray(measurementData?.changes) ? measurementData.changes : [];
 
-  const summaryPack = buildPointFormSummary({ textData, imageData, imageSkipped, imageError, profile, pickA, pickB });
+  const topSummary = uniqueItems([
+    textSummary.overview || '',
+    measurementSummary || '',
+    imageResult.summary || '',
+    imageSkipped ? 'Image review was skipped because preview pages were not ready.' : '',
+    imageError ? `Image review failed: ${imageError}` : ''
+  ]);
+
+  const keyChangePoints = uniqueItems(textDiffs.slice(0, 8).map(item => `${item.section || 'General'}: ${item.before || '-'} → ${item.after || '-'}`));
+  const measurementPoints = uniqueItems(measurementChanges.slice(0, 8).map(item => `${item.before || '-'} → ${item.after || '-'}`));
+  const imagePoints = uniqueItems(imageChanges.slice(0, 10).map(item => `${item.area || 'Visual area'}: ${item.note || ''}`).concat(imageComments.slice(0, 6)));
+  const actionPoints = uniqueItems([...textActions, ...imageActions]);
+  const buyerPoints = uniqueItems(buyerComments.slice(0, 8));
+
+  const plainText = [
+    'Tech Pack Final Summary',
+    '',
+    'Overall Summary',
+    ...(topSummary.length ? topSummary : ['No overall summary generated.']).map(v => `- ${v}`),
+    '',
+    'Measurement Changes',
+    ...(measurementPoints.length ? measurementPoints : ['No clear measurement changes found.']).map(v => `- ${v}`),
+    '',
+    'Key Text Differences',
+    ...(keyChangePoints.length ? keyChangePoints : ['No key text changes found.']).map(v => `- ${v}`),
+    '',
+    'Image Comments / Visual Changes',
+    ...(imagePoints.length ? imagePoints : ['No image findings found.']).map(v => `- ${v}`),
+    '',
+    'Buyer Comments',
+    ...(buyerPoints.length ? buyerPoints : ['No buyer comments extracted.']).map(v => `- ${v}`),
+    '',
+    'Follow-up Actions',
+    ...(actionPoints.length ? actionPoints : ['No follow-up actions returned.']).map(v => `- ${v}`)
+  ].join('\n');
+
+  return { plainText, sections: { topSummary, measurementPoints, keyChangePoints, imagePoints, buyerPoints, actionPoints } };
+}
+
+function renderFinalReport({ textData, imageData, measurementData, imageSkipped = false, imageError = '' }) {
+  const textResult = textData?.result || {};
+  const textDiffs = Array.isArray(textResult.differences) ? textResult.differences : [];
+  const buyerComments = Array.isArray(textResult.buyer_comments) ? textResult.buyer_comments : [];
+  const textActions = Array.isArray(textResult.action_items) ? textResult.action_items : [];
+  const imageResult = imageData?.result || {};
+  const imageComments = Array.isArray(imageResult.visible_comments) ? imageResult.visible_comments : [];
+  const imageChanges = Array.isArray(imageResult.visual_changes) ? imageResult.visual_changes : [];
+  const imageActions = Array.isArray(imageResult.action_items) ? imageResult.action_items : [];
+  const measurementChanges = Array.isArray(measurementData?.changes) ? measurementData.changes : [];
+
+  const summaryPack = buildPointFormSummary({ textData, imageData, measurementData, imageSkipped, imageError });
   state.latestSummaryText = summaryPack.plainText;
 
   const html = `
     <article class="report-card">
       <header class="report-header">
         <div>
-          <p class="eyebrow">Tech Pack Compare Report</p>
-          <h2>Final Summary</h2>
-          <p class="report-subtitle">AI-assisted text + image review for apparel Sales / Merchandisers</p>
+          <p class="eyebrow">Final report</p>
+          <h2>Tech Pack Compare Summary</h2>
+          <p class="report-subtitle">Focused on measurement changes, key text differences, image comments, and follow-up actions.</p>
         </div>
       </header>
-
-      ${buildSelectionMetaHtml(profile, pickA, pickB)}
 
       <section class="report-block">
         <h3>Overall Summary</h3>
         ${toBulletList(summaryPack.sections.topSummary, 'No overall summary generated.')}
+      </section>
+
+      <section class="report-block">
+        <h3>Measurement Changes</h3>
+        ${measurementChanges.length ? `
+          <div class="diff-list">
+            ${measurementChanges.map(item => `
+              <div class="diff-card">
+                <div class="diff-top">
+                  <strong>Measurement Difference</strong>
+                  ${badgeHtml(item.impact || 'medium')}
+                </div>
+                <div class="diff-grid">
+                  <div>
+                    <div class="muted-label">Before</div>
+                    <p>${escapeHtml(item.before || '-')}</p>
+                  </div>
+                  <div>
+                    <div class="muted-label">After</div>
+                    <p>${escapeHtml(item.after || '-')}</p>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<p>No clear measurement changes found.</p>'}
       </section>
 
       <section class="report-block">
@@ -505,9 +524,6 @@ function renderFinalReport({ textData, imageData, imageSkipped = false, imageErr
         <h3>Merged Follow-up Actions</h3>
         ${toBulletList(uniqueItems([...textActions, ...imageActions]), 'No follow-up actions returned.')}
       </section>
-
-      ${buildDebugPageHtml('A')}
-      ${buildDebugPageHtml('B')}
     </article>
   `;
 
@@ -526,21 +542,8 @@ async function runImageOnly() {
     state.customerProfile = detectCustomerProfile(commentsInput.value);
     const pickA = pickPagesForProfile(state.customerProfile, state.A);
     const pickB = pickPagesForProfile(state.customerProfile, state.B);
-    const pageA = pickA.imagePages[0] || Number(textASelect.value || 1);
-    const pageB = pickB.imagePages[0] || Number(textBSelect.value || 1);
-
-    const previewA = await buildPreviewForSide('A', pageA, true);
-    const previewB = await buildPreviewForSide('B', pageB, true);
-
-    const data = await callJson('/.netlify/functions/analyze-techpack-images', {
-      imageA: previewA?.dataUrl || '',
-      imageB: previewB?.dataUrl || '',
-      pageA,
-      pageB,
-      comments: commentsInput.value || ''
-    });
-
-    renderFinalReport({ textData: null, imageData: data, profile: state.customerProfile, pickA, pickB });
+    const imageData = await runMultiImageCompare(pickA, pickB);
+    renderFinalReport({ textData: null, imageData, measurementData: null });
     setActionStatus('Image review ready');
   } catch (error) {
     console.error(error);
@@ -555,45 +558,37 @@ async function runFullCompare() {
   }
 
   try {
-    setActionStatus('Preparing automatic page selection...');
+    setActionStatus('Preparing automatic comparison...');
     state.customerProfile = detectCustomerProfile(commentsInput.value);
     const pickA = pickPagesForProfile(state.customerProfile, state.A);
     const pickB = pickPagesForProfile(state.customerProfile, state.B);
 
-    const textA = buildTextForCompare(state.A, pickA.textPages);
-    const textB = buildTextForCompare(state.B, pickB.textPages);
+    const textA = buildTextForCompare(state.A, uniqueItems([...pickA.textPages, ...pickA.measurementPages]));
+    const textB = buildTextForCompare(state.B, uniqueItems([...pickB.textPages, ...pickB.measurementPages]));
 
-    setActionStatus('Comparing selected text pages...');
+    setActionStatus('Comparing text and measurement pages...');
     const textData = await callJson('/.netlify/functions/compare-techpacks', {
       textA,
       textB,
       comments: commentsInput.value || ''
     });
 
+    const measurementData = compareMeasurementSections(state.A, state.B, pickA.measurementPages, pickB.measurementPages);
+
     let imageData = null;
     let imageSkipped = false;
     let imageError = '';
 
     try {
-      const pageA = pickA.imagePages[0] || Number(textASelect.value || 1);
-      const pageB = pickB.imagePages[0] || Number(textBSelect.value || 1);
-      setActionStatus('Reviewing selected image pages...');
-      const previewA = await buildPreviewForSide('A', pageA, true);
-      const previewB = await buildPreviewForSide('B', pageB, true);
-      imageData = await callJson('/.netlify/functions/analyze-techpack-images', {
-        imageA: previewA?.dataUrl || '',
-        imageB: previewB?.dataUrl || '',
-        pageA,
-        pageB,
-        comments: commentsInput.value || ''
-      });
+      setActionStatus('Comparing image pages...');
+      imageData = await runMultiImageCompare(pickA, pickB);
     } catch (error) {
       console.error(error);
       imageSkipped = true;
       imageError = error.message || 'Image review failed';
     }
 
-    renderFinalReport({ textData, imageData, imageSkipped, imageError, profile: state.customerProfile, pickA, pickB });
+    renderFinalReport({ textData, imageData, measurementData, imageSkipped, imageError });
     setActionStatus('Final report ready');
   } catch (error) {
     console.error(error);
@@ -623,6 +618,4 @@ copySummaryBtn?.addEventListener('click', async () => {
     setActionStatus('Copy failed');
   }
 });
-exportReportBtn?.addEventListener('click', () => {
-  window.print();
-});
+exportReportBtn?.addEventListener('click', () => window.print());
