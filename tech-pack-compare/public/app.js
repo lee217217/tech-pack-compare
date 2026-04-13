@@ -31,8 +31,9 @@ const themeIcon = document.getElementById('themeIcon');
 const themeText = document.getElementById('themeText');
 
 const state = {
-  A: { name: null, pages: 0, text: '', pdf: null, preview: null },
-  B: { name: null, pages: 0, text: '', pdf: null, preview: null },
+  A: { name: null, pages: 0, text: '', pdf: null, preview: null, pageTextMap: [], pageScores: [], autoTextPages: [], autoImagePages: [] },
+  B: { name: null, pages: 0, text: '', pdf: null, preview: null, pageTextMap: [], pageScores: [], autoTextPages: [], autoImagePages: [] },
+  customerProfile: 'hybrid',
   latestSummaryText: '',
   latestReportHtml: ''
 };
@@ -90,7 +91,160 @@ function uniqueItems(items) {
   return [...new Set(items.map(v => String(v).trim()).filter(Boolean))];
 }
 
-function buildPointFormSummary({ textData, imageData, imageSkipped = false, imageError = '' }) {
+function detectCustomerProfile(comments = '') {
+  const t = String(comments || '').toLowerCase();
+  if (/attached image|see image|markup|mark up|arrow|circled|circle|photo|sketch|artwork/.test(t)) return 'image-markup';
+  if (/comment column|remarks|revise|amend|pls change|approved with comment/.test(t)) return 'text-first';
+  return 'hybrid';
+}
+
+function classifyPages(entry) {
+  const pages = entry.pageTextMap || [];
+  if (!pages.length) return { scores: [], autoTextPages: [], autoImagePages: [] };
+
+  const scores = pages.map(({ page, text, length }) => {
+    const lower = text.toLowerCase();
+    const hasMeasurement = /measurement|measure|spec|pom|size|neck|chest|waist|hip|sleeve|inseam|outseam/.test(lower);
+    const hasComment = /comment|remarks|revise|amend|change to|pls change|approved with comment|buyer comment/.test(lower);
+    const hasArtwork = /sketch|artwork|graphic|photo|placement|print|embroidery|label position/.test(lower);
+    const hasBom = /bom|fabric|trim|zipper|button|care label|hangtag|packaging|polybag/.test(lower);
+
+    let pageType = 'general';
+    let textScore = 0;
+    let imageScore = 0;
+    const reasons = [];
+
+    if (hasMeasurement) {
+      pageType = 'measurement';
+      textScore += 2;
+      reasons.push('measurement keywords');
+    }
+    if (hasComment && length > 40) {
+      pageType = pageType === 'measurement' ? 'measurement+comment' : 'text-comment';
+      textScore += 3;
+      reasons.push('comment keywords');
+    }
+    if (hasBom) {
+      textScore += 1;
+      reasons.push('BOM / trim keywords');
+    }
+    if (hasArtwork) {
+      imageScore += 2;
+      reasons.push('artwork / sketch keywords');
+    }
+    if (length < 80) {
+      imageScore += 2;
+      reasons.push('low text density');
+    }
+    if (length < 30) {
+      imageScore += 1;
+    }
+
+    return { page, length, pageType, textScore, imageScore, reasons };
+  });
+
+  let lastMeasurementPage = -1;
+  scores.forEach(item => {
+    if (String(item.pageType).includes('measurement')) {
+      lastMeasurementPage = item.page;
+    } else if (lastMeasurementPage > 0 && item.page > lastMeasurementPage && item.length < 120) {
+      item.imageScore += 2;
+      item.reasons.push('after measurement page with low text');
+    }
+  });
+
+  const autoTextPages = scores
+    .filter(item => item.textScore > 0)
+    .sort((a, b) => b.textScore - a.textScore || a.page - b.page)
+    .slice(0, 3)
+    .map(item => item.page);
+
+  const autoImagePages = scores
+    .filter(item => item.imageScore > 0)
+    .sort((a, b) => b.imageScore - a.imageScore || a.page - b.page)
+    .slice(0, 2)
+    .map(item => item.page);
+
+  return { scores, autoTextPages, autoImagePages };
+}
+
+function pickPagesForProfile(profile, entry) {
+  const textPages = entry.autoTextPages || [];
+  const imagePages = entry.autoImagePages || [];
+
+  if (profile === 'text-first') {
+    return { textPages: textPages.length ? textPages : imagePages, imagePages };
+  }
+  if (profile === 'image-markup') {
+    return { textPages, imagePages: imagePages.length ? imagePages : textPages };
+  }
+  return { textPages, imagePages };
+}
+
+function buildTextForCompare(entry, selectedPages) {
+  const map = entry.pageTextMap || [];
+  if (!selectedPages || !selectedPages.length) return entry.text || '';
+  const want = new Set(selectedPages);
+  const parts = map.filter(p => want.has(p.page)).map(p => `--- Page ${p.page} ---\n${p.text}`);
+  return parts.join('\n\n');
+}
+
+function selectionDisplay(pages) {
+  return pages && pages.length ? pages.join(', ') : '-';
+}
+
+function buildSelectionMetaHtml(profile, pickA, pickB) {
+  return `
+    <section class="report-block">
+      <h3>System Page Selection</h3>
+      <ul>
+        <li>Customer profile: ${escapeHtml(profile)}</li>
+        <li>Text pages A: ${escapeHtml(selectionDisplay(pickA.textPages))}</li>
+        <li>Text pages B: ${escapeHtml(selectionDisplay(pickB.textPages))}</li>
+        <li>Image pages A: ${escapeHtml(selectionDisplay(pickA.imagePages))}</li>
+        <li>Image pages B: ${escapeHtml(selectionDisplay(pickB.imagePages))}</li>
+      </ul>
+    </section>
+  `;
+}
+
+function buildDebugPageHtml(side) {
+  const items = state[side].pageScores || [];
+  if (!items.length) return '';
+  return `
+    <section class="report-block">
+      <h3>Page Classification ${escapeHtml(side)}</h3>
+      <div class="compact-table-wrap">
+        <table class="compact-table">
+          <thead>
+            <tr>
+              <th>Page</th>
+              <th>Type</th>
+              <th>Chars</th>
+              <th>Text Score</th>
+              <th>Image Score</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(item => `
+              <tr>
+                <td>${item.page}</td>
+                <td>${escapeHtml(item.pageType)}</td>
+                <td>${item.length}</td>
+                <td>${item.textScore}</td>
+                <td>${item.imageScore}</td>
+                <td>${escapeHtml(item.reasons.join(', ') || '-')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function buildPointFormSummary({ textData, imageData, imageSkipped = false, imageError = '', profile = 'hybrid', pickA = { textPages: [], imagePages: [] }, pickB = { textPages: [], imagePages: [] } }) {
   const textResult = textData?.result || {};
   const textSummary = textResult.summary || {};
   const textDiffs = Array.isArray(textResult.differences) ? textResult.differences : [];
@@ -104,6 +258,9 @@ function buildPointFormSummary({ textData, imageData, imageSkipped = false, imag
   const topSummary = uniqueItems([
     textSummary.overview || '',
     imageResult.summary || '',
+    `Customer profile: ${profile}`,
+    `Text pages A: ${selectionDisplay(pickA.textPages)} | B: ${selectionDisplay(pickB.textPages)}`,
+    `Image pages A: ${selectionDisplay(pickA.imagePages)} | B: ${selectionDisplay(pickB.imagePages)}`,
     imageSkipped ? 'Image review was skipped because preview pages were not ready.' : '',
     imageError ? `Image review failed: ${imageError}` : ''
   ]);
@@ -127,7 +284,7 @@ function buildPointFormSummary({ textData, imageData, imageSkipped = false, imag
     'Tech Pack Final Summary',
     '',
     'Overall Summary',
-    ...topSummary.map(v => `- ${v}`),
+    ...(topSummary.length ? topSummary : ['No overall summary generated.']).map(v => `- ${v}`),
     '',
     'Key Changes',
     ...(keyChangePoints.length ? keyChangePoints : ['No key text changes found.']).map(v => `- ${v}`),
@@ -148,9 +305,9 @@ function buildPointFormSummary({ textData, imageData, imageSkipped = false, imag
   };
 }
 
-async function renderPagePreview(side, pageNum) {
+async function buildPreviewForSide(side, pageNum, setVisible = false) {
   const entry = state[side];
-  if (!entry.pdf) return;
+  if (!entry.pdf || !pageNum) return null;
   const page = await entry.pdf.getPage(pageNum);
   const viewport = page.getViewport({ scale: 1.4 });
   const canvas = document.createElement('canvas');
@@ -159,13 +316,22 @@ async function renderPagePreview(side, pageNum) {
   canvas.height = viewport.height;
   await page.render({ canvasContext: context, viewport }).promise;
   const dataUrl = canvas.toDataURL('image/png');
-  entry.preview = { page: pageNum, dataUrl, width: canvas.width, height: canvas.height };
+  const preview = { page: pageNum, dataUrl, width: canvas.width, height: canvas.height };
 
-  const img = side === 'A' ? previewImgA : previewImgB;
-  const meta = side === 'A' ? previewMetaA : previewMetaB;
-  img.src = dataUrl;
-  meta.textContent = `Page ${pageNum} · ${canvas.width} × ${canvas.height}`;
-  updateStats();
+  if (setVisible) {
+    entry.preview = preview;
+    const img = side === 'A' ? previewImgA : previewImgB;
+    const meta = side === 'A' ? previewMetaA : previewMetaB;
+    img.src = dataUrl;
+    meta.textContent = `Page ${pageNum} · ${canvas.width} × ${canvas.height}`;
+    updateStats();
+  }
+
+  return preview;
+}
+
+async function renderPagePreview(side, pageNum) {
+  await buildPreviewForSide(side, pageNum, true);
 }
 
 async function extractPdfText(file, side) {
@@ -175,24 +341,51 @@ async function extractPdfText(file, side) {
   const pageSelect = side === 'A' ? textASelect : textBSelect;
 
   try {
+    setActionStatus(`Reading PDF ${side}...`);
     const buffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
     const pageTexts = [];
+    const pageTextMap = [];
+
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
       const content = await page.getTextContent();
       const line = content.items.map(item => item.str).join(' ').replace(/\s+/g, ' ').trim();
       pageTexts.push(`--- Page ${pageNum} ---\n${line}`);
+      pageTextMap.push({ page: pageNum, text: line, length: line.length });
     }
+
     const fullText = pageTexts.join('\n\n');
-    state[side] = { name: file.name, pages: pdf.numPages, text: fullText, pdf, preview: null };
+    const nextEntry = {
+      name: file.name,
+      pages: pdf.numPages,
+      text: fullText,
+      pdf,
+      preview: null,
+      pageTextMap,
+      pageScores: [],
+      autoTextPages: [],
+      autoImagePages: []
+    };
+
+    const classified = classifyPages(nextEntry);
+    nextEntry.pageScores = classified.scores;
+    nextEntry.autoTextPages = classified.autoTextPages;
+    nextEntry.autoImagePages = classified.autoImagePages;
+    state[side] = nextEntry;
+
     nameEl.textContent = file.name;
-    meta.textContent = `Pages: ${pdf.numPages} · Characters: ${fullText.length.toLocaleString()}`;
+    meta.textContent = `Pages: ${pdf.numPages} · Characters: ${fullText.length.toLocaleString()} · Auto text pages: ${selectionDisplay(nextEntry.autoTextPages)} · Auto image pages: ${selectionDisplay(nextEntry.autoImagePages)}`;
     fillPageSelect(pageSelect, pdf.numPages);
-    await renderPagePreview(side, 1);
+
+    const firstPreviewPage = nextEntry.autoImagePages[0] || 1;
+    pageSelect.value = String(firstPreviewPage);
+    await renderPagePreview(side, firstPreviewPage);
+    setActionStatus(`PDF ${side} ready`);
   } catch (error) {
     meta.textContent = 'Pages: - · Characters: -';
     console.error(error);
+    setActionStatus(`Failed to read PDF ${side}`);
   } finally {
     updateStats();
   }
@@ -224,7 +417,7 @@ async function callJson(url, payload) {
   return data;
 }
 
-function renderFinalReport({ textData, imageData, imageSkipped = false, imageError = '' }) {
+function renderFinalReport({ textData, imageData, imageSkipped = false, imageError = '', profile = 'hybrid', pickA = { textPages: [], imagePages: [] }, pickB = { textPages: [], imagePages: [] } }) {
   const textResult = textData?.result || {};
   const textSummary = textResult.summary || {};
   const textDiffs = Array.isArray(textResult.differences) ? textResult.differences : [];
@@ -234,191 +427,202 @@ function renderFinalReport({ textData, imageData, imageSkipped = false, imageErr
   const imageComments = Array.isArray(imageResult.visible_comments) ? imageResult.visible_comments : [];
   const imageChanges = Array.isArray(imageResult.visual_changes) ? imageResult.visual_changes : [];
   const imageActions = Array.isArray(imageResult.action_items) ? imageResult.action_items : [];
-  const mergedActions = uniqueItems([...textActions, ...imageActions]);
-  const notices = uniqueItems([
-    textData?.warning ? `Text compare notice: ${textData.warning}` : '',
-    imageData?.warning ? `Image review notice: ${imageData.warning}` : '',
-    imageSkipped ? 'Image review skipped because preview pages were not ready.' : '',
-    imageError ? `Image review failed: ${imageError}` : ''
-  ]);
 
-  const pointSummary = buildPointFormSummary({ textData, imageData, imageSkipped, imageError });
-  state.latestSummaryText = pointSummary.plainText;
+  const summaryPack = buildPointFormSummary({ textData, imageData, imageSkipped, imageError, profile, pickA, pickB });
+  state.latestSummaryText = summaryPack.plainText;
 
-  finalReportOut.innerHTML = `
-    <div class="report-grid" id="reportContent">
-      <div class="report-card">
-        <div class="report-item-head">
-          <h4 style="margin:0;">Point-form summary</h4>
-          ${badgeHtml(textSummary.risk_level || 'low')}
+  const html = `
+    <article class="report-card">
+      <header class="report-header">
+        <div>
+          <p class="eyebrow">Tech Pack Compare Report</p>
+          <h2>Final Summary</h2>
+          <p class="report-subtitle">AI-assisted text + image review for apparel Sales / Merchandisers</p>
         </div>
-        <div class="summary-grid">
-          <div class="summary-panel">
-            <h5>Overall summary</h5>
-            ${toBulletList(pointSummary.sections.topSummary, 'No overall summary returned.')}
-          </div>
-          <div class="summary-panel">
-            <h5>Key changes</h5>
-            ${toBulletList(pointSummary.sections.keyChangePoints, 'No key text changes found.')}
-          </div>
-          <div class="summary-panel">
-            <h5>Image comments / visual changes</h5>
-            ${toBulletList(pointSummary.sections.imagePoints, 'No image findings found.')}
-          </div>
-          <div class="summary-panel">
-            <h5>Buyer comments</h5>
-            ${toBulletList(pointSummary.sections.buyerPoints, 'No buyer comments extracted.')}
-          </div>
-          <div class="summary-panel">
-            <h5>Follow-up actions</h5>
-            ${toBulletList(pointSummary.sections.actionPoints, 'No follow-up actions returned.')}
-          </div>
-        </div>
-      </div>
+      </header>
 
-      ${notices.length ? `
-        <div class="report-card">
-          <h4>System notices</h4>
-          <ul class="report-list">${notices.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
-        </div>` : ''}
+      ${buildSelectionMetaHtml(profile, pickA, pickB)}
 
-      <div class="report-card">
-        <h4>Detailed text differences (${textDiffs.length})</h4>
-        <div class="report-items">
-          ${textDiffs.length ? textDiffs.map(item => `
-            <div class="report-item">
-              <div class="report-item-head">
-                <strong>${escapeHtml(item.section || 'General')}</strong>
-                ${badgeHtml(item.impact || 'low')}
-              </div>
-              <div class="report-columns">
-                <div>
-                  <div class="label">Before</div>
-                  <div class="muted">${escapeHtml(item.before || '-')}</div>
+      <section class="report-block">
+        <h3>Overall Summary</h3>
+        ${toBulletList(summaryPack.sections.topSummary, 'No overall summary generated.')}
+      </section>
+
+      <section class="report-block">
+        <h3>Key Text Differences</h3>
+        ${textDiffs.length ? `
+          <div class="diff-list">
+            ${textDiffs.map(item => `
+              <div class="diff-card">
+                <div class="diff-top">
+                  <strong>${escapeHtml(item.section || 'General')}</strong>
+                  ${badgeHtml(item.impact || 'low')}
                 </div>
-                <div>
-                  <div class="label">After</div>
-                  <div class="muted">${escapeHtml(item.after || '-')}</div>
+                <div class="diff-grid">
+                  <div>
+                    <div class="muted-label">Before</div>
+                    <p>${escapeHtml(item.before || '-')}</p>
+                  </div>
+                  <div>
+                    <div class="muted-label">After</div>
+                    <p>${escapeHtml(item.after || '-')}</p>
+                  </div>
                 </div>
               </div>
-            </div>`).join('') : '<p>No text differences returned.</p>'}
-        </div>
-      </div>
+            `).join('')}
+          </div>
+        ` : '<p>No key text differences found.</p>'}
+      </section>
 
-      <div class="report-card">
-        <h4>Detailed visual changes (${imageChanges.length})</h4>
-        <div class="report-items">
-          ${imageChanges.length ? imageChanges.map(item => `
-            <div class="report-item">
-              <div class="report-item-head">
-                <strong>${escapeHtml(item.area || 'Visual area')}</strong>
-                ${badgeHtml(item.impact || 'low')}
+      <section class="report-block">
+        <h3>Image Comments / Visual Changes</h3>
+        ${imageChanges.length ? `
+          <div class="diff-list">
+            ${imageChanges.map(item => `
+              <div class="diff-card">
+                <div class="diff-top">
+                  <strong>${escapeHtml(item.area || 'Visual area')}</strong>
+                  ${badgeHtml(item.impact || 'low')}
+                </div>
+                <p>${escapeHtml(item.note || '-')}</p>
               </div>
-              <div class="muted">${escapeHtml(item.note || '')}</div>
-            </div>`).join('') : '<p>No visual changes returned.</p>'}
+            `).join('')}
+          </div>
+        ` : '<p>No image findings found.</p>'}
+        <div class="inline-columns">
+          <div>
+            <div class="muted-label">Visible / Extracted Image Comments</div>
+            ${toBulletList(imageComments, 'No visible image comments extracted.')}
+          </div>
+          <div>
+            <div class="muted-label">Buyer Comments</div>
+            ${toBulletList(buyerComments, 'No buyer comments extracted.')}
+          </div>
         </div>
-      </div>
+      </section>
 
-      <details class="report-card">
-        <summary style="cursor:pointer;font-weight:800;">Raw JSON</summary>
-        <div class="raw-box" style="margin-top:12px;">${escapeHtml(JSON.stringify({ textData, imageData }, null, 2))}</div>
-      </details>
-    </div>`;
+      <section class="report-block">
+        <h3>Merged Follow-up Actions</h3>
+        ${toBulletList(uniqueItems([...textActions, ...imageActions]), 'No follow-up actions returned.')}
+      </section>
 
-  state.latestReportHtml = finalReportOut.innerHTML;
+      ${buildDebugPageHtml('A')}
+      ${buildDebugPageHtml('B')}
+    </article>
+  `;
+
+  state.latestReportHtml = html;
+  finalReportOut.innerHTML = html;
 }
 
 async function runImageOnly() {
-  finalReportOut.textContent = 'Running image review...';
-  setActionStatus('Running image review');
+  if (!state.A.pdf || !state.B.pdf) {
+    setActionStatus('Please upload both PDFs first');
+    return;
+  }
+
   try {
-    if (!state.A.preview || !state.B.preview) throw new Error('Please upload both PDFs and keep preview pages selected.');
-    const imageData = await callJson('/.netlify/functions/analyze-techpack-images', {
-      imageA: state.A.preview.dataUrl,
-      imageB: state.B.preview.dataUrl,
-      pageA: state.A.preview.page,
-      pageB: state.B.preview.page,
-      comments: commentsInput.value
+    setActionStatus('Running image review...');
+    state.customerProfile = detectCustomerProfile(commentsInput.value);
+    const pickA = pickPagesForProfile(state.customerProfile, state.A);
+    const pickB = pickPagesForProfile(state.customerProfile, state.B);
+    const pageA = pickA.imagePages[0] || Number(textASelect.value || 1);
+    const pageB = pickB.imagePages[0] || Number(textBSelect.value || 1);
+
+    const previewA = await buildPreviewForSide('A', pageA, true);
+    const previewB = await buildPreviewForSide('B', pageB, true);
+
+    const data = await callJson('/.netlify/functions/analyze-techpack-images', {
+      imageA: previewA?.dataUrl || '',
+      imageB: previewB?.dataUrl || '',
+      pageA,
+      pageB,
+      comments: commentsInput.value || ''
     });
-    renderFinalReport({ textData: { result: { summary: { overview: 'Image-only run. Full text compare not executed.', risk_level: 'low' }, differences: [], buyer_comments: [], action_items: [] } }, imageData });
+
+    renderFinalReport({ textData: null, imageData: data, profile: state.customerProfile, pickA, pickB });
     setActionStatus('Image review ready');
   } catch (error) {
-    finalReportOut.textContent = error.message;
-    setActionStatus('Image review failed');
+    console.error(error);
+    setActionStatus(`Image review failed: ${error.message}`);
   }
 }
 
-async function runFinalReport() {
-  finalReportOut.textContent = 'Generating final report...';
-  setActionStatus('Generating report');
-  try {
-    if (!state.A.text || !state.B.text) throw new Error('Please upload both PDFs first.');
+async function runFullCompare() {
+  if (!state.A.pdf || !state.B.pdf) {
+    setActionStatus('Please upload both PDFs first');
+    return;
+  }
 
+  try {
+    setActionStatus('Preparing automatic page selection...');
+    state.customerProfile = detectCustomerProfile(commentsInput.value);
+    const pickA = pickPagesForProfile(state.customerProfile, state.A);
+    const pickB = pickPagesForProfile(state.customerProfile, state.B);
+
+    const textA = buildTextForCompare(state.A, pickA.textPages);
+    const textB = buildTextForCompare(state.B, pickB.textPages);
+
+    setActionStatus('Comparing selected text pages...');
     const textData = await callJson('/.netlify/functions/compare-techpacks', {
-      textA: state.A.text,
-      textB: state.B.text,
-      comments: commentsInput.value
+      textA,
+      textB,
+      comments: commentsInput.value || ''
     });
 
     let imageData = null;
     let imageSkipped = false;
     let imageError = '';
 
-    if (state.A.preview && state.B.preview) {
-      try {
-        imageData = await callJson('/.netlify/functions/analyze-techpack-images', {
-          imageA: state.A.preview.dataUrl,
-          imageB: state.B.preview.dataUrl,
-          pageA: state.A.preview.page,
-          pageB: state.B.preview.page,
-          comments: commentsInput.value
-        });
-      } catch (error) {
-        imageError = error.message;
-      }
-    } else {
+    try {
+      const pageA = pickA.imagePages[0] || Number(textASelect.value || 1);
+      const pageB = pickB.imagePages[0] || Number(textBSelect.value || 1);
+      setActionStatus('Reviewing selected image pages...');
+      const previewA = await buildPreviewForSide('A', pageA, true);
+      const previewB = await buildPreviewForSide('B', pageB, true);
+      imageData = await callJson('/.netlify/functions/analyze-techpack-images', {
+        imageA: previewA?.dataUrl || '',
+        imageB: previewB?.dataUrl || '',
+        pageA,
+        pageB,
+        comments: commentsInput.value || ''
+      });
+    } catch (error) {
+      console.error(error);
       imageSkipped = true;
+      imageError = error.message || 'Image review failed';
     }
 
-    renderFinalReport({ textData, imageData, imageSkipped, imageError });
-    setActionStatus('Report ready');
+    renderFinalReport({ textData, imageData, imageSkipped, imageError, profile: state.customerProfile, pickA, pickB });
+    setActionStatus('Final report ready');
   } catch (error) {
-    finalReportOut.textContent = error.message;
-    setActionStatus('Report failed');
+    console.error(error);
+    setActionStatus(`Report failed: ${error.message}`);
   }
 }
 
-async function copySummary() {
+fileAInput?.addEventListener('change', e => extractPdfText(e.target.files?.[0], 'A'));
+fileBInput?.addEventListener('change', e => extractPdfText(e.target.files?.[0], 'B'));
+textASelect?.addEventListener('change', e => renderPagePreview('A', Number(e.target.value)));
+textBSelect?.addEventListener('change', e => renderPagePreview('B', Number(e.target.value)));
+bindDropzone('dropA', fileAInput, 'A');
+bindDropzone('dropB', fileBInput, 'B');
+compareBtn?.addEventListener('click', runFullCompare);
+compareBtn2?.addEventListener('click', runFullCompare);
+visionBtn?.addEventListener('click', runImageOnly);
+copySummaryBtn?.addEventListener('click', async () => {
+  if (!state.latestSummaryText) {
+    setActionStatus('No summary available to copy');
+    return;
+  }
   try {
-    if (!state.latestSummaryText) throw new Error('Please generate a report first.');
     await navigator.clipboard.writeText(state.latestSummaryText);
     setActionStatus('Summary copied');
   } catch (error) {
+    console.error(error);
     setActionStatus('Copy failed');
-    alert(error.message || 'Copy failed');
   }
-}
-
-function exportReport() {
-  if (!state.latestReportHtml) {
-    setActionStatus('Nothing to export');
-    alert('Please generate a report first.');
-    return;
-  }
-  setActionStatus('Opening print view');
+});
+exportReportBtn?.addEventListener('click', () => {
   window.print();
-}
-
-fileAInput.addEventListener('change', e => extractPdfText(e.target.files[0], 'A'));
-fileBInput.addEventListener('change', e => extractPdfText(e.target.files[0], 'B'));
-textASelect.addEventListener('change', e => renderPagePreview('A', Number(e.target.value)));
-textBSelect.addEventListener('change', e => renderPagePreview('B', Number(e.target.value)));
-compareBtn.addEventListener('click', runFinalReport);
-compareBtn2.addEventListener('click', runFinalReport);
-visionBtn.addEventListener('click', runImageOnly);
-copySummaryBtn.addEventListener('click', copySummary);
-exportReportBtn.addEventListener('click', exportReport);
-bindDropzone('dropA', fileAInput, 'A');
-bindDropzone('dropB', fileBInput, 'B');
-updateStats();
-setActionStatus('No report yet');
+});
