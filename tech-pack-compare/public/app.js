@@ -316,136 +316,82 @@ async function extractMeasurementTableViaOCR(side, pages) {
 
 function compareExtractedMeasurementRows(rowsA, rowsB) {
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const mapA = new Map(rowsA.map(r => [norm(`${r.pom_name} ${r.description}`), r]));
-  const mapB = new Map(rowsB.map(r => [norm(`${r.pom_name} ${r.description}`), r]));
+
+  const mapA = new Map(
+    (rowsA || []).map((r) => [norm(`${r.pom_name} ${r.description}`), r])
+  );
+  const mapB = new Map(
+    (rowsB || []).map((r) => [norm(`${r.pom_name} ${r.description}`), r])
+  );
+
   const keys = [...new Set([...mapA.keys(), ...mapB.keys()])];
   const rows = [];
 
-  keys.forEach(key => {
+  keys.forEach((key) => {
     const a = mapA.get(key);
     const b = mapB.get(key);
-    const sizeKeys = [...new Set([...Object.keys(a?.size_values || {}), ...Object.keys(b?.size_values || {})])];
-    sizeKeys.forEach(size => {
-      const valueA = a?.size_values?.[size] || '-';
-      const valueB = b?.size_values?.[size] || '-';
-      const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
-      if (status !== 'Same') {
-        rows.push({
-          pomName: a?.pom_name || b?.pom_name || 'POM',
-          description: a?.description || b?.description || '-',
-          size,
-          valueA,
-          valueB,
-          status,
-          pageA: a?.page || '-',
-          pageB: b?.page || '-',
-          impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam/.test(`${a?.pom_name || ''} ${a?.description || b?.description || ''}`.toLowerCase()) ? 'high' : 'medium'
-        });
-      }
+    const sizeKeys = [
+      ...new Set([
+        ...Object.keys(a?.size_values || {}),
+        ...Object.keys(b?.size_values || {})
+      ])
+    ];
+
+    sizeKeys.forEach((size) => {
+      const valueA =
+        (a && a.size_values && a.size_values[size] !== undefined
+          ? String(a.size_values[size]).trim()
+          : '') || '';
+      const valueB =
+        (b && b.size_values && b.size_values[size] !== undefined
+          ? String(b.size_values[size]).trim()
+          : '') || '';
+
+      if (!valueA && !valueB) return;
+
+      const status =
+        valueA === valueB
+          ? 'Same'
+          : !valueA
+          ? 'Added in B'
+          : !valueB
+          ? 'Removed from B'
+          : 'Changed';
+
+      if (status === 'Same') return;
+
+      rows.push({
+        pomName: a?.pom_name || b?.pom_name || 'POM',
+        description: a?.description || b?.description || '-',
+        size,
+        valueA: valueA || '-',
+        valueB: valueB || '-',
+        status,
+        pageA: a?.page || '-',
+        pageB: b?.page || '-',
+        impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam|band|cup|wing/.test(
+          `${a?.pom_name || ''} ${a?.description || b?.description || ''}`.toLowerCase()
+        )
+          ? 'high'
+          : 'medium'
+      });
     });
   });
 
-  const changes = rows.map(row => ({
+  const changes = rows.map((row) => ({
     before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
     after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
     impact: row.impact
   }));
 
   const summary = rows.length
-    ? `${rows.length} measurement difference row(s) were identified by OCR table extraction.`
-    : 'No clear measurement changes found.';
+    ? `${rows.length} measurement difference row(s) were identified by POM and size label.`
+    : 'Measurement tables were processed but no numeric differences were found between A and B.';
 
   return { summary, changes, rows };
 }
 
-async function buildPreviewForSide(side, pageNum, setVisible = false) {
-  const entry = state[side];
-  if (!entry.pdf || !pageNum) return null;
-  const page = await entry.pdf.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 1.4 });
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  await page.render({ canvasContext: context, viewport }).promise;
-  const dataUrl = canvas.toDataURL('image/png');
-  const preview = { page: pageNum, dataUrl, width: canvas.width, height: canvas.height };
-
-  if (setVisible) {
-    state[side].preview = preview;
-    const img = side === 'A' ? previewImgA : previewImgB;
-    const meta = side === 'A' ? previewMetaA : previewMetaB;
-    img.src = dataUrl;
-    meta.textContent = `Page ${pageNum} · ${canvas.width} × ${canvas.height}`;
-    updateStats();
-  }
-
-  return preview;
-}
-
-async function renderPagePreview(side, pageNum) {
-  await buildPreviewForSide(side, pageNum, true);
-}
-
-async function extractPdfText(file, side) {
-  if (!file) return;
-  const meta = side === 'A' ? fileAMeta : fileBMeta;
-  const nameEl = side === 'A' ? fileAName : fileBName;
-  const pageSelect = side === 'A' ? textASelect : textBSelect;
-
-  try {
-    setActionStatus(`Reading PDF ${side}...`);
-    const buffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-    const pageTexts = [];
-    const pageTextMap = [];
-
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const content = await page.getTextContent();
-      const line = content.items.map(item => item.str).join(' ').replace(/\s+/g, ' ').trim();
-      pageTexts.push(`--- Page ${pageNum} ---\n${line}`);
-      pageTextMap.push({ page: pageNum, text: line, length: line.length });
-    }
-
-    const fullText = pageTexts.join('\n\n');
-    const nextEntry = {
-      name: file.name,
-      pages: pdf.numPages,
-      text: fullText,
-      pdf,
-      preview: null,
-      pageTextMap,
-      pageScores: [],
-      autoTextPages: [],
-      autoImagePages: [],
-      autoMeasurementPages: []
-    };
-
-    const classified = classifyPages(nextEntry);
-    nextEntry.pageScores = classified.scores;
-    nextEntry.autoTextPages = classified.autoTextPages;
-    nextEntry.autoImagePages = classified.autoImagePages;
-    nextEntry.autoMeasurementPages = classified.autoMeasurementPages;
-    state[side] = nextEntry;
-
-    nameEl.textContent = file.name;
-    meta.textContent = `Pages: ${pdf.numPages} · Characters: ${fullText.length.toLocaleString()} · Auto compare ready`;
-    fillPageSelect(pageSelect, pdf.numPages);
-    const firstPreviewPage = nextEntry.autoImagePages[0] || 1;
-    pageSelect.value = String(firstPreviewPage);
-    await renderPagePreview(side, firstPreviewPage);
-    setActionStatus(`PDF ${side} ready`);
-  } catch (error) {
-    meta.textContent = 'Pages: - · Characters: -';
-    console.error(error);
-    setActionStatus(`Failed to read PDF ${side}`);
-  } finally {
-    updateStats();
-  }
-}
-
-function bindDropzone(dropId, input, side) {
+functionn bindDropzone(dropId, input, side) {
   const zone = document.getElementById(dropId);
   ['dragenter', 'dragover'].forEach(name => zone.addEventListener(name, e => { e.preventDefault(); zone.classList.add('dragover'); }));
   ['dragleave', 'drop'].forEach(name => zone.addEventListener(name, e => { e.preventDefault(); zone.classList.remove('dragover'); }));
