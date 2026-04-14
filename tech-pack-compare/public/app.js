@@ -120,7 +120,7 @@ function classifyPages(entry) {
 
   const scores = pages.map(({ page, text, length }) => {
     const lower = String(text || '').toLowerCase();
-    const hasMeasurement = /measurement|measure|spec|pom|size|neck|chest|waist|hip|sleeve|inseam|outseam|tolerance/.test(lower);
+    const hasMeasurement = /measurement|measure|spec|pom|size chart|size range|selected sizes|neck|chest|waist|hip|sleeve|inseam|outseam|tolerance|cup height|bottom band|armhole|strap|wing length/.test(lower);
     const hasComment = /comment|remarks|revise|amend|change to|pls change|approved with comment|buyer comment/.test(lower);
     const hasArtwork = /sketch|artwork|graphic|photo|placement|print|embroidery|label position/.test(lower);
     const hasBom = /bom|fabric|trim|zipper|button|care label|hangtag|packaging|polybag/.test(lower);
@@ -195,14 +195,14 @@ function normalizeMeasurementLine(line = '') {
   return String(line || '').replace(/\s+/g, ' ').trim();
 }
 
-const COMMON_SIZE_HEADERS = ['XXS','XS','S','M','L','XL','XXL','2XL','3XL','4XL','5XL'];
+const COMMON_SIZE_HEADERS = ['XXS','XS','S','M','L','XL','XXL','2XL','3XL','4XL','5XL','32B','34B','36B','38B','40B','32C','34C','36C','38C','40C','32D','34D','36D','38D','40D','32DD','34DD','36DD','38DD','40DD'];
 const MEASUREMENT_HINTS = /(pom|point of measure|pts of measure|measurements|measurement spec|neck|chest|waist|hip|sleeve|length|opening|bottom|shoulder|inseam|outseam|tolerance|body length|across|armhole|sweep|bicep|cuff)/i;
 const NON_MEASUREMENT_HINTS = /(bom|costing|fabric|trim|supplier|article|centric|detail|packaging|polybag|hangtag|label artwork|revision date)/i;
 
 function looksLikeMeasurementLine(clean = '') {
   const numberCount = (clean.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || []).length;
   const sizeCount = (clean.match(/\b(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL)\b/gi) || []).length;
-  const likelyMeasurementByStructure = numberCount >= 2 && (sizeCount >= 1 || /tol|tolerance|spec|measure/i.test(clean));
+  const likelyMeasurementByStructure = numberCount >= 2 && (sizeCount >= 1 || /tol|tolerance|spec|measure|cup|band|armhole|strap|wing/i.test(clean));
   return (MEASUREMENT_HINTS.test(clean) || likelyMeasurementByStructure) && !NON_MEASUREMENT_HINTS.test(clean);
 }
 
@@ -246,7 +246,7 @@ function extractMeasurementLines(entry, pages) {
   (pages || []).forEach(pageNum => {
     const text = getPageText(entry, pageNum);
     String(text || '')
-      .split(/(?=\b(?:POM|POINT OF MEASURE|PTS OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE|SWEEP|BICEP|CUFF)\b)/i)
+      .split(/(?=\b(?:POM|POINT OF MEASURE|PTS OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE|SWEEP|BICEP|CUFF|CUP HEIGHT|CUP LENGTH|BOTTOM BAND|WING LENGTH|STRAP LENGTH|CENTER FRONT|SIDESEAM)\b)/i)
       .map(normalizeMeasurementLine)
       .filter(Boolean)
       .forEach(line => {
@@ -262,7 +262,7 @@ function extractRawMeasurementCandidates(entry, pages) {
   (pages || []).forEach(pageNum => {
     const text = getPageText(entry, pageNum);
     String(text || '')
-      .split(/(?=\b(?:POM|POINT OF MEASURE|PTS OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE|SWEEP|BICEP|CUFF)\b)/i)
+      .split(/(?=\b(?:POM|POINT OF MEASURE|PTS OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE|SWEEP|BICEP|CUFF|CUP HEIGHT|CUP LENGTH|BOTTOM BAND|WING LENGTH|STRAP LENGTH|CENTER FRONT|SIDESEAM)\b)/i)
       .map(normalizeMeasurementLine)
       .filter(Boolean)
       .forEach(line => {
@@ -910,8 +910,8 @@ async function runFullCompare() {
     });
 
     setActionStatus('Extracting measurement tables...');
-    const targetPagesA = pickA.measurementPages.length ? pickA.measurementPages : pickA.textPages;
-    const targetPagesB = pickB.measurementPages.length ? pickB.measurementPages : pickB.textPages;
+    const targetPagesA = pickA.measurementPages.length ? pickA.measurementPages : (state.A.pageScores || []).filter(p => p.measurementScore > 0 || /measurement chart|size chart|selected sizes/i.test(getPageText(state.A, p.page))).map(p => p.page).slice(0, 4);
+    const targetPagesB = pickB.measurementPages.length ? pickB.measurementPages : (state.B.pageScores || []).filter(p => p.measurementScore > 0 || /measurement chart|size chart|selected sizes/i.test(getPageText(state.B, p.page))).map(p => p.page).slice(0, 4);
 
     let measurementRowsA = [];
     let measurementRowsB = [];
