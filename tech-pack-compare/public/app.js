@@ -35,7 +35,8 @@ const state = {
   B: { name: null, pages: 0, text: '', pdf: null, preview: null, pageTextMap: [], pageScores: [], autoTextPages: [], autoImagePages: [], autoMeasurementPages: [] },
   customerProfile: 'hybrid',
   latestSummaryText: '',
-  latestReportHtml: ''
+  latestReportHtml: '',
+  measurementDebug: null
 };
 
 (function initTheme() {
@@ -360,6 +361,45 @@ function compareParsedMeasurementRowsFuzzy(linesA, linesB) {
   }
 
   return rows;
+}
+
+
+function renderMeasurementDebug(debug) {
+  const blocks = [];
+  const a = debug?.parsedA || [];
+  const b = debug?.parsedB || [];
+  const ocrA = debug?.ocrA || [];
+  const ocrB = debug?.ocrB || [];
+  const rows = debug?.rows || [];
+
+  blocks.push(`<div class="report-block"><h3>Measurement Debug</h3><p class="muted-label">OCR A rows: ${ocrA.length} · OCR B rows: ${ocrB.length} · Parsed A rows: ${a.length} · Parsed B rows: ${b.length} · Final diff rows: ${rows.length}</p></div>`);
+
+  const sample = (items, title, mapper) => `
+    <section class="report-block">
+      <h3>${title}</h3>
+      ${items.length ? `<div class="diff-list">${items.slice(0,10).map(mapper).join('')}</div>` : '<p>None</p>'}
+    </section>
+  `;
+
+  blocks.push(sample(a, 'Parsed Measurement A', item => `
+    <div class="diff-card">
+      <div class="diff-top"><strong>${escapeHtml(item.pomName || 'POM')}</strong>${badgeHtml('low')}</div>
+      <p>${escapeHtml(item.description || '-')}</p>
+      <p>${escapeHtml(JSON.stringify(item.sizeValueMap || {}))}</p>
+      <p>Page ${escapeHtml(item.page || '-')}</p>
+    </div>
+  `));
+
+  blocks.push(sample(b, 'Parsed Measurement B', item => `
+    <div class="diff-card">
+      <div class="diff-top"><strong>${escapeHtml(item.pomName || 'POM')}</strong>${badgeHtml('low')}</div>
+      <p>${escapeHtml(item.description || '-')}</p>
+      <p>${escapeHtml(JSON.stringify(item.sizeValueMap || {}))}</p>
+      <p>Page ${escapeHtml(item.page || '-')}</p>
+    </div>
+  `));
+
+  return blocks.join('');
 }
 
 function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
@@ -815,8 +855,9 @@ function renderFinalReport({ textData, imageData, measurementData, imageSkipped 
     </article>
   `;
 
-  state.latestReportHtml = html;
-  if (finalReportOut) finalReportOut.innerHTML = html;
+  const debugHtml = state.measurementDebug ? renderMeasurementDebug(state.measurementDebug) : '';
+  state.latestReportHtml = html + debugHtml;
+  if (finalReportOut) finalReportOut.innerHTML = html + debugHtml;
 }
 
 async function runImageOnly() {
@@ -874,6 +915,8 @@ async function runFullCompare() {
 
     let measurementRowsA = [];
     let measurementRowsB = [];
+    let parsedA = [];
+    let parsedB = [];
     try {
       measurementRowsA = await extractMeasurementTableViaOCR('A', targetPagesA);
       measurementRowsB = await extractMeasurementTableViaOCR('B', targetPagesB);
@@ -884,8 +927,8 @@ async function runFullCompare() {
     let measurementData = compareExtractedMeasurementRows(measurementRowsA, measurementRowsB);
 
     if (!measurementData.rows.length) {
-      const parsedA = extractMeasurementLines(state.A, targetPagesA);
-      const parsedB = extractMeasurementLines(state.B, targetPagesB);
+      parsedA = extractMeasurementLines(state.A, targetPagesA);
+      parsedB = extractMeasurementLines(state.B, targetPagesB);
       const parsedRows = compareParsedMeasurementRowsFuzzy(parsedA, parsedB);
 
       if (parsedRows.length) {
@@ -929,6 +972,7 @@ async function runFullCompare() {
       imageError = error.message || 'Image review failed';
     }
 
+    state.measurementDebug = { ocrA: measurementRowsA, ocrB: measurementRowsB, parsedA, parsedB, rows: measurementData?.rows || [] };
     renderFinalReport({ textData, imageData, measurementData, imageSkipped, imageError });
     setActionStatus('Final report ready');
   } catch (error) {
