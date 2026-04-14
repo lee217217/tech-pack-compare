@@ -274,6 +274,94 @@ function extractRawMeasurementCandidates(entry, pages) {
   return out;
 }
 
+
+function normalizeSizeLabel(size = '') {
+  const s = String(size || '').trim().toUpperCase().replace(/\s+/g, '');
+  const map = {
+    '2XS': 'XXS',
+    'XS': 'XS',
+    'S': 'S',
+    'M': 'M',
+    'L': 'L',
+    'XL': 'XL',
+    '1X': 'XL',
+    'XXL': 'XXL',
+    '2XL': 'XXL',
+    '3XL': '3XL',
+    '4XL': '4XL',
+    '5XL': '5XL'
+  };
+  return map[s] || s || 'VALUE';
+}
+
+function normalizeMeasurementKey(pom = '', desc = '') {
+  return `${pom} ${desc}`
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/(point of measure|pts of measure|measurement|measurements|spec|tol|tolerance)/g, ' ')
+    .replace(/(body|garment)/g, ' ')
+    .replace(/(hps|cf|cb)/g, ' ')
+    .replace(/1 below armhole/g, ' chest ')
+    .replace(/pit to pit/g, ' chest ')
+    .replace(/across chest/g, ' chest ')
+    .replace(/across shoulder/g, ' shoulder ')
+    .replace(/sleeve length from shoulder/g, ' sleeve length ')
+    .replace(/body length from hps/g, ' body length ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compareParsedMeasurementRowsFuzzy(linesA, linesB) {
+  const normalizeLine = (item) => ({
+    ...item,
+    normKey: normalizeMeasurementKey(item?.pomName || '', item?.description || ''),
+    normSizes: Object.fromEntries(Object.entries(item?.sizeValueMap || {}).map(([k,v]) => [normalizeSizeLabel(k), v]))
+  });
+
+  const aList = (linesA || []).map(normalizeLine).filter(item => item.normKey);
+  const bList = (linesB || []).map(normalizeLine).filter(item => item.normKey);
+  const usedB = new Set();
+  const rows = [];
+
+  for (const a of aList) {
+    let best = null;
+    let bestIndex = -1;
+    for (let i = 0; i < bList.length; i++) {
+      if (usedB.has(i)) continue;
+      const b = bList[i];
+      if (a.normKey === b.normKey || a.normKey.includes(b.normKey) || b.normKey.includes(a.normKey)) {
+        best = b;
+        bestIndex = i;
+        break;
+      }
+    }
+    if (!best) continue;
+    usedB.add(bestIndex);
+
+    const sizeKeys = [...new Set([...Object.keys(a.normSizes || {}), ...Object.keys(best.normSizes || {})])];
+    sizeKeys.forEach(size => {
+      const valueA = a.normSizes?.[size] ?? '-';
+      const valueB = best.normSizes?.[size] ?? '-';
+      const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
+      if (status !== 'Same') {
+        rows.push({
+          pomName: a.pomName || best.pomName || 'POM',
+          description: a.description || best.description || '-',
+          size,
+          valueA,
+          valueB,
+          status,
+          pageA: a.page || '-',
+          pageB: best.page || '-',
+          impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam|band|cup|wing|shoulder/.test(`${a.pomName || ''} ${a.description || best.description || ''}`.toLowerCase()) ? 'high' : 'medium'
+        });
+      }
+    });
+  }
+
+  return rows;
+}
+
 function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
   const candA = extractRawMeasurementCandidates(entryA, pagesA);
   const candB = extractRawMeasurementCandidates(entryB, pagesB);
@@ -798,34 +886,7 @@ async function runFullCompare() {
     if (!measurementData.rows.length) {
       const parsedA = extractMeasurementLines(state.A, targetPagesA);
       const parsedB = extractMeasurementLines(state.B, targetPagesB);
-      const parsedMapA = new Map((parsedA || []).map(item => [item.key, item]));
-      const parsedMapB = new Map((parsedB || []).map(item => [item.key, item]));
-      const parsedKeys = [...new Set([...parsedMapA.keys(), ...parsedMapB.keys()])];
-      const parsedRows = [];
-
-      parsedKeys.forEach(key => {
-        const a = parsedMapA.get(key);
-        const b = parsedMapB.get(key);
-        const sizeKeys = [...new Set([...Object.keys(a?.sizeValueMap || {}), ...Object.keys(b?.sizeValueMap || {})])];
-        sizeKeys.forEach(size => {
-          const valueA = a?.sizeValueMap?.[size] ?? '-';
-          const valueB = b?.sizeValueMap?.[size] ?? '-';
-          const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
-          if (status !== 'Same') {
-            parsedRows.push({
-              pomName: a?.pomName || b?.pomName || 'POM',
-              description: a?.description || b?.description || '-',
-              size,
-              valueA,
-              valueB,
-              status,
-              pageA: a?.page || '-',
-              pageB: b?.page || '-',
-              impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam|band|cup|wing/.test(`${a?.pomName || ''} ${a?.description || b?.description || ''}`.toLowerCase()) ? 'high' : 'medium'
-            });
-          }
-        });
-      });
+      const parsedRows = compareParsedMeasurementRowsFuzzy(parsedA, parsedB);
 
       if (parsedRows.length) {
         measurementData = {
