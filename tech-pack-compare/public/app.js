@@ -305,38 +305,6 @@ function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
 
   return rows;
 
-function compareParsedMeasurementLines(linesA, linesB) {
-  const mapA = new Map((linesA || []).map(item => [item.key, item]));
-  const mapB = new Map((linesB || []).map(item => [item.key, item]));
-  const keys = [...new Set([...mapA.keys(), ...mapB.keys()])];
-  const rows = [];
-
-  keys.forEach(key => {
-    const a = mapA.get(key);
-    const b = mapB.get(key);
-    const sizeKeys = [...new Set([...Object.keys(a?.sizeValueMap || {}), ...Object.keys(b?.sizeValueMap || {})])];
-    sizeKeys.forEach(size => {
-      const valueA = a?.sizeValueMap?.[size] ?? '-';
-      const valueB = b?.sizeValueMap?.[size] ?? '-';
-      const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
-      if (status !== 'Same') {
-        rows.push({
-          pomName: a?.pomName || b?.pomName || 'POM',
-          description: a?.description || b?.description || '-',
-          size,
-          valueA,
-          valueB,
-          status,
-          pageA: a?.page || '-',
-          pageB: b?.page || '-',
-          impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam|band|cup|wing/.test(`${a?.pomName || ''} ${a?.description || b?.description || ''}`.toLowerCase()) ? 'high' : 'medium'
-        });
-      }
-    });
-  });
-
-  return rows;
-}
 
 }
 
@@ -830,7 +798,35 @@ async function runFullCompare() {
     if (!measurementData.rows.length) {
       const parsedA = extractMeasurementLines(state.A, targetPagesA);
       const parsedB = extractMeasurementLines(state.B, targetPagesB);
-      const parsedRows = compareParsedMeasurementLines(parsedA, parsedB);
+      const parsedMapA = new Map((parsedA || []).map(item => [item.key, item]));
+      const parsedMapB = new Map((parsedB || []).map(item => [item.key, item]));
+      const parsedKeys = [...new Set([...parsedMapA.keys(), ...parsedMapB.keys()])];
+      const parsedRows = [];
+
+      parsedKeys.forEach(key => {
+        const a = parsedMapA.get(key);
+        const b = parsedMapB.get(key);
+        const sizeKeys = [...new Set([...Object.keys(a?.sizeValueMap || {}), ...Object.keys(b?.sizeValueMap || {})])];
+        sizeKeys.forEach(size => {
+          const valueA = a?.sizeValueMap?.[size] ?? '-';
+          const valueB = b?.sizeValueMap?.[size] ?? '-';
+          const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
+          if (status !== 'Same') {
+            parsedRows.push({
+              pomName: a?.pomName || b?.pomName || 'POM',
+              description: a?.description || b?.description || '-',
+              size,
+              valueA,
+              valueB,
+              status,
+              pageA: a?.page || '-',
+              pageB: b?.page || '-',
+              impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam|band|cup|wing/.test(`${a?.pomName || ''} ${a?.description || b?.description || ''}`.toLowerCase()) ? 'high' : 'medium'
+            });
+          }
+        });
+      });
+
       if (parsedRows.length) {
         measurementData = {
           summary: `${parsedRows.length} measurement difference row(s) were identified by text measurement parsing.`,
