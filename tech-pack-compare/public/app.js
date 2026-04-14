@@ -908,23 +908,6 @@ async function runFullCompare() {
     }
 
     if (!measurementData.rows.length) {
-      const chartRowsA = extractMeasurementChartRows(state.A, targetPagesA);
-      const chartRowsB = extractMeasurementChartRows(state.B, targetPagesB);
-      const chartRows = compareParsedMeasurementRowsFuzzy(chartRowsA, chartRowsB);
-      if (chartRows.length) {
-        measurementData = {
-          summary: `${chartRows.length} measurement difference row(s) were identified by chart-block parsing.`,
-          changes: chartRows.map(row => ({
-            before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
-            after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
-            impact: row.impact
-          })),
-          rows: chartRows
-        };
-      }
-    }
-
-    if (!measurementData.rows.length) {
       const fallbackRows = buildFallbackMeasurementRows(state.A, state.B, targetPagesA, targetPagesB);
       if (fallbackRows.length) {
         measurementData = {
