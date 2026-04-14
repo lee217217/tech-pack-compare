@@ -523,10 +523,8 @@ async function callJson(url, payload) {
 }
 
 async function extractMeasurementTableViaOCR(side, pages) {
-  console.log('[measurement] start OCR', { side, pages });
   const rows = [];
   const targetPages = (pages || []).slice(0, 3);
-  console.log('[measurement] targetPages', side, targetPages);
   if (!targetPages.length) return rows;
 
   for (const pageNum of targetPages) {
@@ -537,8 +535,6 @@ async function extractMeasurementTableViaOCR(side, pages) {
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 25000);
-
-      console.log('[measurement] fetching function', { side, pageNum });
       const res = await fetch('/.netlify/functions/extract-measurement-table', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -548,7 +544,6 @@ async function extractMeasurementTableViaOCR(side, pages) {
 
       clearTimeout(timeout);
       const data = await res.json().catch(() => ({}));
-      console.log('[measurement] function response', { side, pageNum, ok: res.ok, status: res.status, data });
       if (!res.ok) throw new Error(data.error || data.message || `Measurement OCR failed on ${side} page ${pageNum}`);
 
       const pageRows = Array.isArray(data?.result?.rows) ? data.result.rows : [];
@@ -880,7 +875,6 @@ async function runFullCompare() {
     setActionStatus('Extracting measurement tables...');
     const targetPagesA = pickA.measurementPages.length ? pickA.measurementPages : (state.A.pageScores || []).filter(p => p.measurementScore > 0 || /measurement chart|size chart|selected sizes/i.test(getPageText(state.A, p.page))).map(p => p.page).slice(0, 4);
     const targetPagesB = pickB.measurementPages.length ? pickB.measurementPages : (state.B.pageScores || []).filter(p => p.measurementScore > 0 || /measurement chart|size chart|selected sizes/i.test(getPageText(state.B, p.page))).map(p => p.page).slice(0, 4);
-    console.log('[measurement] selected pages', { targetPagesA, targetPagesB, pickA, pickB });
 
     let measurementRowsA = [];
     let measurementRowsB = [];
@@ -972,4 +966,4 @@ copySummaryBtn?.addEventListener('click', async () => {
 });
 exportReportBtn?.addEventListener('click', () => window.print());
 
-setActionStatus('app.js version 2026-04-14-1450 measurement-fix');
+setActionStatus('app.js version 2026-04-14-1643 raw-text-first');
