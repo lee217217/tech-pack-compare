@@ -244,15 +244,19 @@ function parseMeasurementLine(line = '') {
 function extractMeasurementLines(entry, pages) {
   const lines = [];
   (pages || []).forEach(pageNum => {
-    const text = getPageText(entry, pageNum);
-    String(text || '')
-      .split(/(?=\b(?:POM|POINT OF MEASURE|PTS OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE|SWEEP|BICEP|CUFF|CUP HEIGHT|CUP LENGTH|BOTTOM BAND|WING LENGTH|STRAP LENGTH|CENTER FRONT|SIDESEAM)\b)/i)
+    const pageText = String(getPageText(entry, pageNum) || '');
+    const chunks = pageText
+      .replace(/\b(Displaying\s+\d+\s*-\s*\d+\s+of\s+\d+\s+results)\b/gi, '\n$1\n')
+      .replace(/\b(POM Name|Description|Tolerance Message|Measurement Chart|Size Chart|Selected Sizes)\b/gi, '\n$1\n')
+      .replace(/\b(B\d+(?:\.\d+)?|D\d+(?:\.\d+)?|F\d+(?:\.\d+)?|J\d+(?:\.\d+)?)\b/g, '\n$1')
+      .split(/\n+/)
       .map(normalizeMeasurementLine)
-      .filter(Boolean)
-      .forEach(line => {
-        const parsed = parseMeasurementLine(line);
-        if (parsed?.key) lines.push({ page: pageNum, line, ...parsed });
-      });
+      .filter(Boolean);
+
+    chunks.forEach(line => {
+      const parsed = parseMeasurementLine(line);
+      if (parsed?.key) lines.push({ page: pageNum, line, ...parsed });
+    });
   });
   return lines;
 }
@@ -371,8 +375,12 @@ function renderMeasurementDebug(debug) {
   const ocrA = debug?.ocrA || [];
   const ocrB = debug?.ocrB || [];
   const rows = debug?.rows || [];
+  const targetPagesA = debug?.targetPagesA || [];
+  const targetPagesB = debug?.targetPagesB || [];
+  const rawA = debug?.rawA || [];
+  const rawB = debug?.rawB || [];
 
-  blocks.push(`<div class="report-block"><h3>Measurement Debug</h3><p class="muted-label">OCR A rows: ${ocrA.length} · OCR B rows: ${ocrB.length} · Parsed A rows: ${a.length} · Parsed B rows: ${b.length} · Final diff rows: ${rows.length}</p></div>`);
+  blocks.push(`<div class="report-block"><h3>Measurement Debug</h3><p class="muted-label">OCR A rows: ${ocrA.length} · OCR B rows: ${ocrB.length} · Parsed A rows: ${a.length} · Parsed B rows: ${b.length} · Final diff rows: ${rows.length}</p><p class="muted-label">Target pages A: ${escapeHtml(targetPagesA.join(', ') || '-')} · Target pages B: ${escapeHtml(targetPagesB.join(', ') || '-')}</p></div>`);
 
   const sample = (items, title, mapper) => `
     <section class="report-block">
@@ -390,6 +398,20 @@ function renderMeasurementDebug(debug) {
     </div>
   `));
 
+  blocks.push(sample(rawA, 'Raw Measurement Candidate A', item => `
+    <div class="diff-card">
+      <p>${escapeHtml(item.raw || '-')}</p>
+      <p>Page ${escapeHtml(item.page || '-')}</p>
+    </div>
+  `));
+
+  blocks.push(sample(rawB, 'Raw Measurement Candidate B', item => `
+    <div class="diff-card">
+      <p>${escapeHtml(item.raw || '-')}</p>
+      <p>Page ${escapeHtml(item.page || '-')}</p>
+    </div>
+  `));
+
   blocks.push(sample(b, 'Parsed Measurement B', item => `
     <div class="diff-card">
       <div class="diff-top"><strong>${escapeHtml(item.pomName || 'POM')}</strong>${badgeHtml('low')}</div>
@@ -400,6 +422,53 @@ function renderMeasurementDebug(debug) {
   `));
 
   return blocks.join('');
+}
+
+
+function extractMeasurementChartBlocks(entry, pages) {
+  const out = [];
+  (pages || []).forEach(pageNum => {
+    const text = String(getPageText(entry, pageNum) || '');
+    if (!/measurement chart|size chart|selected sizes|32b|34b|40dd/i.test(text)) return;
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    const rowPattern = /((?:[BDFJ]\d+(?:\.\d+)?)\s+.+?)(?=(?:[BDFJ]\d+(?:\.\d+)?)\s+|$)/gi;
+    const matches = [...normalized.matchAll(rowPattern)];
+    matches.forEach(m => out.push({ page: pageNum, raw: m[1].trim() }));
+  });
+  return out;
+}
+
+function parseMeasurementChartBlockRow(raw = '', page = '-') {
+  const line = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!line) return null;
+  const pomMatch = line.match(/^([BDFJ]\d+(?:\.\d+)?)/i);
+  if (!pomMatch) return null;
+  const pomName = pomMatch[1].toUpperCase();
+  const sizeMatches = [...line.matchAll(/(32B|34B|36B|38B|40B|32C|34C|36C|38C|40C|32D|34D|36D|38D|40D|32DD|34DD|36DD|38DD|40DD)/gi)].map(m => m[1].toUpperCase());
+  const numberMatches = [...line.matchAll(/-?\d+(?:\.\d+)?(?:\/\d+)?/g)].map(m => m[0]);
+  let description = line.replace(pomName, '').trim();
+  if (sizeMatches.length) {
+    const firstSize = description.search(/(32B|34B|36B|38B|40B|32C|34C|36C|38C|40C|32D|34D|36D|38D|40D|32DD|34DD|36DD|38DD|40DD)/i);
+    if (firstSize > 0) description = description.slice(0, firstSize).trim();
+  } else {
+    const firstNum = description.search(/-?\d+(?:\.\d+)?(?:\/\d+)?/);
+    if (firstNum > 0) description = description.slice(0, firstNum).trim();
+  }
+  const sizeValueMap = {};
+  if (sizeMatches.length >= 2) {
+    const filteredNums = numberMatches.filter(n => !/^\d+$/.test(n) || Number(n) > 20 || String(n).includes('/') || String(n).includes('.'));
+    sizeMatches.forEach((size, i) => {
+      if (filteredNums[i] !== undefined) sizeValueMap[size] = filteredNums[i];
+    });
+  }
+  if (!Object.keys(sizeValueMap).length) return null;
+  return { page, pomName, description: description || pomName, sizeValueMap, key: normalizeMeasurementKey(pomName, description || pomName) };
+}
+
+function extractMeasurementChartRows(entry, pages) {
+  return extractMeasurementChartBlocks(entry, pages)
+    .map(item => parseMeasurementChartBlockRow(item.raw, item.page))
+    .filter(Boolean);
 }
 
 function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
@@ -917,6 +986,8 @@ async function runFullCompare() {
     let measurementRowsB = [];
     let parsedA = [];
     let parsedB = [];
+    let rawA = [];
+    let rawB = [];
     try {
       measurementRowsA = await extractMeasurementTableViaOCR('A', targetPagesA);
       measurementRowsB = await extractMeasurementTableViaOCR('B', targetPagesB);
@@ -927,6 +998,8 @@ async function runFullCompare() {
     let measurementData = compareExtractedMeasurementRows(measurementRowsA, measurementRowsB);
 
     if (!measurementData.rows.length) {
+      rawA = extractRawMeasurementCandidates(state.A, targetPagesA);
+      rawB = extractRawMeasurementCandidates(state.B, targetPagesB);
       parsedA = extractMeasurementLines(state.A, targetPagesA);
       parsedB = extractMeasurementLines(state.B, targetPagesB);
       const parsedRows = compareParsedMeasurementRowsFuzzy(parsedA, parsedB);
@@ -940,6 +1013,23 @@ async function runFullCompare() {
             impact: row.impact
           })),
           rows: parsedRows
+        };
+      }
+    }
+
+    if (!measurementData.rows.length) {
+      const chartRowsA = extractMeasurementChartRows(state.A, targetPagesA);
+      const chartRowsB = extractMeasurementChartRows(state.B, targetPagesB);
+      const chartRows = compareParsedMeasurementRowsFuzzy(chartRowsA, chartRowsB);
+      if (chartRows.length) {
+        measurementData = {
+          summary: `${chartRows.length} measurement difference row(s) were identified by chart-block parsing.`,
+          changes: chartRows.map(row => ({
+            before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
+            after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
+            impact: row.impact
+          })),
+          rows: chartRows
         };
       }
     }
@@ -972,7 +1062,7 @@ async function runFullCompare() {
       imageError = error.message || 'Image review failed';
     }
 
-    state.measurementDebug = { ocrA: measurementRowsA, ocrB: measurementRowsB, parsedA, parsedB, rows: measurementData?.rows || [] };
+    state.measurementDebug = { ocrA: measurementRowsA, ocrB: measurementRowsB, parsedA, parsedB, rawA, rawB, targetPagesA, targetPagesB, rows: measurementData?.rows || [] };
     renderFinalReport({ textData, imageData, measurementData, imageSkipped, imageError });
     setActionStatus('Final report ready');
   } catch (error) {
@@ -1004,3 +1094,5 @@ copySummaryBtn?.addEventListener('click', async () => {
   }
 });
 exportReportBtn?.addEventListener('click', () => window.print());
+
+setActionStatus('app.js version 2026-04-14-1127 one-shot');
