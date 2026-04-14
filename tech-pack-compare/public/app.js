@@ -525,7 +525,7 @@ async function callJson(url, payload) {
 async function extractMeasurementTableViaOCR(side, pages) {
   console.log('[measurement] start OCR', { side, pages });
   const rows = [];
-  const targetPages = (pages || []).slice(0, 2);
+  const targetPages = (pages || []).slice(0, 3);
   console.log('[measurement] targetPages', side, targetPages);
   if (!targetPages.length) return rows;
 
@@ -972,4 +972,4 @@ copySummaryBtn?.addEventListener('click', async () => {
 });
 exportReportBtn?.addEventListener('click', () => window.print());
 
-setActionStatus('app.js version 2026-04-14-1416 measurement-log');
+setActionStatus('app.js version 2026-04-14-1450 measurement-fix');

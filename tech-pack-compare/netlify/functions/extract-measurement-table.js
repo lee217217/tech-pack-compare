@@ -38,7 +38,7 @@ export default async (request) => {
       additionalProperties: false
     };
 
-    const prompt = `Extract the measurement chart from this tech pack page image and return JSON only.
+    const prompt = `Extract the measurement chart from this tech pack page image and return JSON only. Do not return an empty rows array unless you truly cannot see any measurement row.
 
 Rules:
 - Read only the measurement table rows.
@@ -48,7 +48,8 @@ Rules:
 - Extract all size columns and values exactly as shown.
 - The size columns may be standard apparel sizes OR bra sizes like 32B, 34B, 36B, 38B, 40B, 32C, 34C, 36C, 38C, 40C, 32D, 34D, 36D, 38D, 40D, 32DD, 34DD, 36DD, 38DD, 40DD.
 - If the page contains multiple segments of the same measurement chart, merge all rows into one rows array.
-- If the image is hard to read, still try to return partial rows rather than empty output.
+- If the image is hard to read, still return partial rows rather than empty output.
+- If you can identify even one row like B21, F18, J14, D3.2, return it.
 - If nothing usable is visible, return {"rows":[]}.
 
 Return format:
@@ -82,11 +83,7 @@ Return format:
           }
         ],
         temperature: 0,
-        max_tokens: 4000,
-        response_format: {
-          type: 'json_schema',
-          json_schema: { schema }
-        }
+        max_tokens: 4000
       };
 
       const controller = new AbortController();
@@ -110,7 +107,10 @@ Return format:
       try {
         parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
       } catch {
-        parsed = { rows: [] };
+        const match = typeof raw === 'string' ? raw.match(/\{[\s\S]*\}/) : null;
+        if (match) {
+          try { parsed = JSON.parse(match[0]); } catch {}
+        }
       }
       return { parsed, raw, model };
     }
@@ -126,7 +126,7 @@ Return format:
 
     if (!rows.length) {
       try {
-        const retry = await callPerplexity('sonar-pro', 'Important: this page may be a bra measurement chart. Treat bra size headers like 32B, 34B, 36C, 40DD as valid size columns. Return partial rows if needed.');
+        const retry = await callPerplexity('sonar-pro', 'Important: this page may be a bra measurement chart. Treat bra size headers like 32B, 34B, 36C, 40DD as valid size columns. Return partial rows if needed. If you can see POM codes such as B21, F18, J14, F47, F26, F28, D3.1, F55, F52, D3.2, output them.');
         rows = Array.isArray(retry?.parsed?.rows) ? retry.parsed.rows : [];
         primary = retry;
       } catch {}
