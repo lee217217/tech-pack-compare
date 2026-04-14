@@ -1,94 +1,140 @@
-export const handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({ ok: true })
-    };
+export default async (request) => {
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
-  const json = (body, statusCode = 200) => ({
-    statusCode,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
-    },
-    body: JSON.stringify(body)
-  });
-
   try {
-    const { image, side, page } = JSON.parse(event.body || '{}');
-    if (!image) return json({ error: 'image is required' }, 400);
+    const { image, side = 'A', page = 1 } = await request.json();
+    if (!image) {
+      return new Response(JSON.stringify({ error: 'Missing image' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     const apiKey = process.env.PERPLEXITY_API_KEY;
-    if (!apiKey) return json({ error: 'PERPLEXITY_API_KEY is missing' }, 500);
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'Missing PERPLEXITY_API_KEY' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
-    const prompt =
-      'You are extracting garment measurement/spec table data from a tech pack page image.\n' +
-      'Return ONLY valid JSON with this exact schema and nothing else (no markdown, no comments):\n' +
-      `{"side":"${side || 'A'}","page":${Number(page || 1)},"rows":[{"pom_name":"","description":"","size_values":{"<SIZE_LABEL>":""}}]}\n` +
-      'Where:\n' +
-      '- pom_name: the POM code/name from the first column (e.g. "B21.1", "F28").\n' +
-      '- description: the point of measure description from the second column.\n' +
-      '- size_values: an object whose KEYS are ALL size headers as printed in the table (for example 32B, 34B, 36B, 38B, 40B, 32C, 34C, 36C, 38C, 40C, 32D, 34D, 36D, 38D, 40D, 32DD, 34DD, 36DD, 38DD, 40DD) and whose VALUES are the numeric spec values for that POM and size.\n' +
-      'Rules:\n' +
-      '- Extract only measurement/spec rows, not BOM, costing, artwork, revision history, or notes.\n' +
-      '- If a POM has a sub-row with an arrow (↳) description, treat it as the same POM and include its values in the same row when possible.\n' +
-      '- If a size cell is blank for a given POM, omit that key from size_values or set it to an empty string.\n' +
-      '- Do NOT normalise or change the size labels; keep them exactly as shown in the header.\n' +
-      '- If no measurement table is visible, use an empty array for rows.\n' +
-      '- Do not include any explanation text; answer must be raw JSON only.';
+    const prompt = `You are extracting a garment measurement chart from a tech pack page image. Return JSON only.
 
-    const resp = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'sonar-reasoning-pro',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: image
+Goal:
+- Read the measurement chart/table from the image.
+- Extract each measurement row.
+- Keep exact POM code and description when visible.
+- Extract size columns and their values exactly as shown.
+- This file may use apparel sizes (XS, S, M, L, XL) OR bra sizes (32B, 34B, 36B, 38B, 40B, 32C, 34C, 36C, 38C, 40C, 32D, 34D, 36D, 38D, 40D, 32DD, 34DD, 36DD, 38DD, 40DD).
+- Ignore headers, footers, page numbers, 'Displaying x-y of z results', and non-table metadata.
+- If multiple table sections exist, merge all measurement rows into one rows array.
+- If nothing readable is present, return {"rows":[]}.
+
+Output schema exactly:
+{
+  "rows": [
+    {
+      "pom_name": "B21",
+      "description": "Neck Along Edge- Strap to Strap",
+      "size_values": {
+        "32B": "12 5/8",
+        "34B": "12 1/2"
+      }
+    }
+  ]
+}`;
+
+    const body = {
+      model: 'sonar-pro',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a precise OCR-to-JSON extraction engine. Output valid JSON only and no markdown.'
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: image } }
+          ]
+        }
+      ],
+      temperature: 0.1,
+      max_tokens: 4000,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          schema: {
+            type: 'object',
+            properties: {
+              rows: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    pom_name: { type: 'string' },
+                    description: { type: 'string' },
+                    size_values: {
+                      type: 'object',
+                      additionalProperties: { type: 'string' }
+                    }
+                  },
+                  required: ['pom_name', 'description', 'size_values'],
+                  additionalProperties: false
                 }
               }
-            ]
+            },
+            required: ['rows'],
+            additionalProperties: false
           }
-        ],
-        temperature: 0
-      })
+        }
+      }
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+
+    const res = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
     });
 
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => resp.statusText);
-      return json({ error: `Perplexity API error: ${resp.status} ${errText}` }, 500);
+    clearTimeout(timeout);
+    const data = await res.json();
+    if (!res.ok) {
+      return new Response(JSON.stringify({ error: data?.error?.message || 'Perplexity API request failed', raw: data }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
-    const data = await resp.json();
-    const text =
-      data?.choices?.[0]?.message?.content?.[0]?.text ||
-      data?.choices?.[0]?.message?.content ||
-      '';
-
+    const raw = data?.choices?.[0]?.message?.content || '{}';
     let parsed;
     try {
-      parsed = JSON.parse(String(text).trim());
+      parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
     } catch {
-      const match = String(text).match(/\{[\s\S]*\}/);
-      parsed = match ? JSON.parse(match[0]) : { side, page, rows: [] };
+      parsed = { rows: [] };
     }
 
-    return json({ ok: true, result: parsed });
+    const rows = Array.isArray(parsed?.rows) ? parsed.rows : [];
+    return new Response(JSON.stringify({ ok: true, side, page, result: { rows } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
   } catch (error) {
-    return json({ error: error.message || 'measurement extraction failed' }, 500);
+    return new Response(JSON.stringify({ error: error?.message || 'Unexpected error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 };

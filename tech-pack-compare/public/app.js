@@ -35,8 +35,7 @@ const state = {
   B: { name: null, pages: 0, text: '', pdf: null, preview: null, pageTextMap: [], pageScores: [], autoTextPages: [], autoImagePages: [], autoMeasurementPages: [] },
   customerProfile: 'hybrid',
   latestSummaryText: '',
-  latestReportHtml: '',
-  measurementDebug: null
+  latestReportHtml: ''
 };
 
 (function initTheme() {
@@ -367,109 +366,6 @@ function compareParsedMeasurementRowsFuzzy(linesA, linesB) {
   return rows;
 }
 
-
-function renderMeasurementDebug(debug) {
-  const blocks = [];
-  const a = debug?.parsedA || [];
-  const b = debug?.parsedB || [];
-  const ocrA = debug?.ocrA || [];
-  const ocrB = debug?.ocrB || [];
-  const rows = debug?.rows || [];
-  const targetPagesA = debug?.targetPagesA || [];
-  const targetPagesB = debug?.targetPagesB || [];
-  const rawA = debug?.rawA || [];
-  const rawB = debug?.rawB || [];
-
-  blocks.push(`<div class="report-block"><h3>Measurement Debug</h3><p class="muted-label">OCR A rows: ${ocrA.length} · OCR B rows: ${ocrB.length} · Parsed A rows: ${a.length} · Parsed B rows: ${b.length} · Final diff rows: ${rows.length}</p><p class="muted-label">Target pages A: ${escapeHtml(targetPagesA.join(', ') || '-')} · Target pages B: ${escapeHtml(targetPagesB.join(', ') || '-')}</p></div>`);
-
-  const sample = (items, title, mapper) => `
-    <section class="report-block">
-      <h3>${title}</h3>
-      ${items.length ? `<div class="diff-list">${items.slice(0,10).map(mapper).join('')}</div>` : '<p>None</p>'}
-    </section>
-  `;
-
-  blocks.push(sample(a, 'Parsed Measurement A', item => `
-    <div class="diff-card">
-      <div class="diff-top"><strong>${escapeHtml(item.pomName || 'POM')}</strong>${badgeHtml('low')}</div>
-      <p>${escapeHtml(item.description || '-')}</p>
-      <p>${escapeHtml(JSON.stringify(item.sizeValueMap || {}))}</p>
-      <p>Page ${escapeHtml(item.page || '-')}</p>
-    </div>
-  `));
-
-  blocks.push(sample(rawA, 'Raw Measurement Candidate A', item => `
-    <div class="diff-card">
-      <p>${escapeHtml(item.raw || '-')}</p>
-      <p>Page ${escapeHtml(item.page || '-')}</p>
-    </div>
-  `));
-
-  blocks.push(sample(rawB, 'Raw Measurement Candidate B', item => `
-    <div class="diff-card">
-      <p>${escapeHtml(item.raw || '-')}</p>
-      <p>Page ${escapeHtml(item.page || '-')}</p>
-    </div>
-  `));
-
-  blocks.push(sample(b, 'Parsed Measurement B', item => `
-    <div class="diff-card">
-      <div class="diff-top"><strong>${escapeHtml(item.pomName || 'POM')}</strong>${badgeHtml('low')}</div>
-      <p>${escapeHtml(item.description || '-')}</p>
-      <p>${escapeHtml(JSON.stringify(item.sizeValueMap || {}))}</p>
-      <p>Page ${escapeHtml(item.page || '-')}</p>
-    </div>
-  `));
-
-  return blocks.join('');
-}
-
-
-function extractMeasurementChartBlocks(entry, pages) {
-  const out = [];
-  (pages || []).forEach(pageNum => {
-    const text = String(getPageText(entry, pageNum) || '');
-    if (!/measurement chart|size chart|selected sizes|32b|34b|40dd/i.test(text)) return;
-    const normalized = text.replace(/\s+/g, ' ').trim();
-    const rowPattern = /((?:[BDFJ]\d+(?:\.\d+)?)\s+.+?)(?=(?:[BDFJ]\d+(?:\.\d+)?)\s+|$)/gi;
-    const matches = [...normalized.matchAll(rowPattern)];
-    matches.forEach(m => out.push({ page: pageNum, raw: m[1].trim() }));
-  });
-  return out;
-}
-
-function parseMeasurementChartBlockRow(raw = '', page = '-') {
-  const line = String(raw || '').replace(/\s+/g, ' ').trim();
-  if (!line) return null;
-  const pomMatch = line.match(/^([BDFJ]\d+(?:\.\d+)?)/i);
-  if (!pomMatch) return null;
-  const pomName = pomMatch[1].toUpperCase();
-  const sizeMatches = [...line.matchAll(/(32B|34B|36B|38B|40B|32C|34C|36C|38C|40C|32D|34D|36D|38D|40D|32DD|34DD|36DD|38DD|40DD)/gi)].map(m => m[1].toUpperCase());
-  const numberMatches = [...line.matchAll(/-?\d+(?:\.\d+)?(?:\/\d+)?/g)].map(m => m[0]);
-  let description = line.replace(pomName, '').trim();
-  if (sizeMatches.length) {
-    const firstSize = description.search(/(32B|34B|36B|38B|40B|32C|34C|36C|38C|40C|32D|34D|36D|38D|40D|32DD|34DD|36DD|38DD|40DD)/i);
-    if (firstSize > 0) description = description.slice(0, firstSize).trim();
-  } else {
-    const firstNum = description.search(/-?\d+(?:\.\d+)?(?:\/\d+)?/);
-    if (firstNum > 0) description = description.slice(0, firstNum).trim();
-  }
-  const sizeValueMap = {};
-  if (sizeMatches.length >= 2) {
-    const filteredNums = numberMatches.filter(n => !/^\d+$/.test(n) || Number(n) > 20 || String(n).includes('/') || String(n).includes('.'));
-    sizeMatches.forEach((size, i) => {
-      if (filteredNums[i] !== undefined) sizeValueMap[size] = filteredNums[i];
-    });
-  }
-  if (!Object.keys(sizeValueMap).length) return null;
-  return { page, pomName, description: description || pomName, sizeValueMap, key: normalizeMeasurementKey(pomName, description || pomName) };
-}
-
-function extractMeasurementChartRows(entry, pages) {
-  return extractMeasurementChartBlocks(entry, pages)
-    .map(item => parseMeasurementChartBlockRow(item.raw, item.page))
-    .filter(Boolean);
-}
 
 function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
   const candA = extractRawMeasurementCandidates(entryA, pagesA);
@@ -924,9 +820,8 @@ function renderFinalReport({ textData, imageData, measurementData, imageSkipped 
     </article>
   `;
 
-  const debugHtml = state.measurementDebug ? renderMeasurementDebug(state.measurementDebug) : '';
-  state.latestReportHtml = html + debugHtml;
-  if (finalReportOut) finalReportOut.innerHTML = html + debugHtml;
+  state.latestReportHtml = html;
+  if (finalReportOut) finalReportOut.innerHTML = html;
 }
 
 async function runImageOnly() {
@@ -984,10 +879,7 @@ async function runFullCompare() {
 
     let measurementRowsA = [];
     let measurementRowsB = [];
-    let parsedA = [];
-    let parsedB = [];
-    let rawA = [];
-    let rawB = [];
+
     try {
       measurementRowsA = await extractMeasurementTableViaOCR('A', targetPagesA);
       measurementRowsB = await extractMeasurementTableViaOCR('B', targetPagesB);
@@ -998,10 +890,8 @@ async function runFullCompare() {
     let measurementData = compareExtractedMeasurementRows(measurementRowsA, measurementRowsB);
 
     if (!measurementData.rows.length) {
-      rawA = extractRawMeasurementCandidates(state.A, targetPagesA);
-      rawB = extractRawMeasurementCandidates(state.B, targetPagesB);
-      parsedA = extractMeasurementLines(state.A, targetPagesA);
-      parsedB = extractMeasurementLines(state.B, targetPagesB);
+      const parsedA = extractMeasurementLines(state.A, targetPagesA);
+      const parsedB = extractMeasurementLines(state.B, targetPagesB);
       const parsedRows = compareParsedMeasurementRowsFuzzy(parsedA, parsedB);
 
       if (parsedRows.length) {
@@ -1062,7 +952,6 @@ async function runFullCompare() {
       imageError = error.message || 'Image review failed';
     }
 
-    state.measurementDebug = { ocrA: measurementRowsA, ocrB: measurementRowsB, parsedA, parsedB, rawA, rawB, targetPagesA, targetPagesB, rows: measurementData?.rows || [] };
     renderFinalReport({ textData, imageData, measurementData, imageSkipped, imageError });
     setActionStatus('Final report ready');
   } catch (error) {
