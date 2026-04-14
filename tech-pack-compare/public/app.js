@@ -304,6 +304,40 @@ function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
   });
 
   return rows;
+
+function compareParsedMeasurementLines(linesA, linesB) {
+  const mapA = new Map((linesA || []).map(item => [item.key, item]));
+  const mapB = new Map((linesB || []).map(item => [item.key, item]));
+  const keys = [...new Set([...mapA.keys(), ...mapB.keys()])];
+  const rows = [];
+
+  keys.forEach(key => {
+    const a = mapA.get(key);
+    const b = mapB.get(key);
+    const sizeKeys = [...new Set([...Object.keys(a?.sizeValueMap || {}), ...Object.keys(b?.sizeValueMap || {})])];
+    sizeKeys.forEach(size => {
+      const valueA = a?.sizeValueMap?.[size] ?? '-';
+      const valueB = b?.sizeValueMap?.[size] ?? '-';
+      const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
+      if (status !== 'Same') {
+        rows.push({
+          pomName: a?.pomName || b?.pomName || 'POM',
+          description: a?.description || b?.description || '-',
+          size,
+          valueA,
+          valueB,
+          status,
+          pageA: a?.page || '-',
+          pageB: b?.page || '-',
+          impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam|band|cup|wing/.test(`${a?.pomName || ''} ${a?.description || b?.description || ''}`.toLowerCase()) ? 'high' : 'medium'
+        });
+      }
+    });
+  });
+
+  return rows;
+}
+
 }
 
 async function buildPreviewForSide(side, pageNum, setVisible = false) {
@@ -429,13 +463,36 @@ async function callJson(url, payload) {
 
 async function extractMeasurementTableViaOCR(side, pages) {
   const rows = [];
-  for (const pageNum of (pages || []).slice(0, 3)) {
-    const preview = await buildPreviewForSide(side, pageNum, false);
-    if (!preview?.dataUrl) continue;
-    const data = await callJson('/.netlify/functions/extract-measurement-table', { image: preview.dataUrl, side, page: pageNum });
-    const pageRows = Array.isArray(data?.result?.rows) ? data.result.rows : [];
-    pageRows.forEach(row => rows.push({ ...row, page: pageNum }));
+  const targetPages = (pages || []).slice(0, 2);
+  if (!targetPages.length) return rows;
+
+  for (const pageNum of targetPages) {
+    try {
+      setActionStatus(`Extracting measurement tables... ${side} page ${pageNum}`);
+      const preview = await buildPreviewForSide(side, pageNum, false);
+      if (!preview?.dataUrl) continue;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+
+      const res = await fetch('/.netlify/functions/extract-measurement-table', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: preview.dataUrl, side, page: pageNum }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeout);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.message || `Measurement OCR failed on ${side} page ${pageNum}`);
+
+      const pageRows = Array.isArray(data?.result?.rows) ? data.result.rows : [];
+      pageRows.forEach(row => rows.push({ ...row, page: pageNum }));
+    } catch (error) {
+      console.warn(`Measurement OCR skipped for ${side} page ${pageNum}:`, error);
+    }
   }
+
   return rows;
 }
 
@@ -769,6 +826,23 @@ async function runFullCompare() {
     }
 
     let measurementData = compareExtractedMeasurementRows(measurementRowsA, measurementRowsB);
+
+    if (!measurementData.rows.length) {
+      const parsedA = extractMeasurementLines(state.A, targetPagesA);
+      const parsedB = extractMeasurementLines(state.B, targetPagesB);
+      const parsedRows = compareParsedMeasurementLines(parsedA, parsedB);
+      if (parsedRows.length) {
+        measurementData = {
+          summary: `${parsedRows.length} measurement difference row(s) were identified by text measurement parsing.`,
+          changes: parsedRows.map(row => ({
+            before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
+            after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
+            impact: row.impact
+          })),
+          rows: parsedRows
+        };
+      }
+    }
 
     if (!measurementData.rows.length) {
       const fallbackRows = buildFallbackMeasurementRows(state.A, state.B, targetPagesA, targetPagesB);
