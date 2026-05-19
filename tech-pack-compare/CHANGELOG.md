@@ -4,6 +4,73 @@
 
 ---
 
+## [2.1.0] — 2026-05-19
+
+主題：**Open Mode (免注冊試用) + PDF.js 上傳 + SaaS 三區介面 + 7-sheet Excel**。
+
+### Added — 新增
+
+#### Open Mode（預設啟用）
+- `FEATURES.requireLicense` 預設 `false` — 任何人無需 license 即可試用。`X-License-Key` 變 optional。
+- `rateLimiter.OPEN_ACCESS_LICENSE = 'OPEN-ACCESS'`；無 header 時以此進行 per-license 計數。
+- `ADMIN_LICENSE_KEY` 帶頭仍然能解 `DEBUG_ALL` outputMode。
+- IP rate limit (per-min 30 / per-day 500) 現在是第一道防線。
+
+#### PDF.js 上傳（取代 textarea）
+- `public/modules/upload.js` ：dropzone + drag-drop + thumbnail（首頁縮圖）+ per-page text extraction（PDF.js worker, cdnjs 4.0.379）。
+- 自動偵測 `SIZE TABLE` / `BOM` regex → `sizeTablePages[]` / `bomPages[]` hint 傳給 LLM。
+- `relevantImages` 最多 6 頁（`FILE_LIMITS.maxImagePages`），480px JPEG q=0.7，避免 Netlify 6MB payload 上限。
+- `extractorAgent.normalizeDoc()` 同時接受 **legacy `rawText`** 與 **v2.1 structured `pages[]`** payload，向後兼容。
+- `validatePdfPayload(side, obj)` 審查不同 shape：rawText 或 pages[] 任一即可。>5MB 警告、relevantImages 超上限裁斷 + warning。
+
+#### SaaS 三區介面 + 4-步 wizard
+- `public/index.html`：sidebar (240px) / workspace / inspector (320px) 三區布局 + 4-step wizard（上傳 → 選項 → 執行 → 檢視）。
+- `public/style.css`：重寫為 CSS design tokens (indigo/slate B2B 調色盤) + dark / light theme。
+- Google Fonts：Inter / JetBrains Mono / Noto Sans TC。
+- `netlify.toml` CSP 增 `worker-src 'self' blob: cdnjs`、`font-src` 加 Google Fonts CDN。
+
+#### 前端模組化 `public/modules/`
+- `i18n.js` / `logger.js` / `state.js` / `theme.js` / `toast.js` / `api.js` / `ui.js` / `progress.js` / `upload.js` / `excel.js`
+- 4 tab 及 Debug tab 拆到 `public/modules/tabs/`：`summary.js` / `measurement.js` / `comments.js` / `bom.js` / `qa.js` / `debug.js`
+- `app.js` 重寫為純 orchestrator，不再含業務邏輯。
+
+#### Excel 7-sheet 匯出
+- 原 5 sheet + **封面 Cover**（meta + KI 帶出）+ **Workflow Log**（每個 agent 狀態/tokens/duration）。
+- 檔名：`TechPack_{styleSlug}_{ISO日期}.xlsx`。
+
+### Changed — 變更
+
+- **License 從 required 變 optional**。`X-License-Key` header 在 Open Mode 不再必需。仍可透過 `REQUIRE_LICENSE=true` 重新啟用嚴格模式。
+- `meta.version` 為 `v2.1.0`、`FRAMEWORK_VERSION` export 提供給前端讀取。
+
+### Tests — 測試
+
+- `tests/functions.mock.test.js` 重寫：**Open Mode 200**、v2.1 structured pages、IP rate limit 連敲 31 次 → 429、admin DEBUG_ALL 保留 + non-admin 降級 FULL。
+- `tests/payload.test.js` 新增：`validatePdfPayload` 9 case（legacy / pages / null / >5MB / relevantImages 裁斷等）。
+- 總 **50 / 50 mock pass**（包含原 41 case + 9 新增）。
+
+### 設計 trade-off（自決，記錄於此）
+
+1. **Open Mode 預設開** — 用戶明確要求試用門檻零。將來產品化 SaaS 要接付費時，設 `REQUIRE_LICENSE=true` 即可重新嚴格。
+2. **PDF.js 只送 text + 前 6 頁圖片** — 防 6MB；掃描版 PDF (無 text layer) 有限，KI-009 標記。
+3. **兩種 payload shape 並存** — 保留 legacy `rawText` 承接 v1 / v2.0 老客戶；新 `pages[]` 能帶 sizeTable / BOM hint 提高 LLM 準確度。
+4. **SaaS layout 選 indigo + slate** — 定調 B2B、適合公司內部使用的色盤；避免太 saturated（如 brand red / blue）。
+5. **IP rate limit 依然 in-memory** — Netlify multi-instance 下不是絕對準，但 cost-controlling 效果仍在；Phase 6 可接 Redis。
+6. **`screenshot_page` 跳過** — 本次交付環境不適合跑 `netlify dev` server；交付以 README 的使用說明代替，本地跑 `npm start` 可看到新 UI。
+
+### KI 狀態更新
+
+| ID | 狀態 | 註 |
+|---|---|---|
+| KI-001 | ✅ RESOLVED in v2.1 | PDF.js 已接（掃描版另計 KI-009）|
+| KI-005 | ✅ RESOLVED in v2.1 | extractor 接 v2.1 structured pages |
+| KI-009 | 新 OPEN · LOW | 掃描版 PDF 無 text layer — 需 OCR (v3) |
+| KI-010 | 新 OPEN · LOW | relevantImages 6 頁上限 — v3 vision 接入後能拿高 |
+| KI-011 | 新 OPEN · LOW | Netlify cold-start in-memory rate state 會清空 |
+| KI-012 | 新 OPEN · LOW | 從 Open Mode 切回付費需重設 `REQUIRE_LICENSE` |
+
+---
+
 ## [2.0.0] — 2026-05-19
 
 第一個正式版,由 v1 完整重寫。Multi-agent + Schema-validated + Provider-locked + 繁中(HK) UI。

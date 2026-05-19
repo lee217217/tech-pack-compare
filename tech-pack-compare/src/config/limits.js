@@ -36,7 +36,9 @@ export const FILE_LIMITS = {
 // ───────────────────────── Rate limit ─────────────────────────
 export const RATE_LIMITS = {
   /** 每 IP 每分鐘 request 上限 */
-  perMinute: intFromEnv('RATE_LIMIT_PER_MIN', 10),
+  perMinute: intFromEnv('RATE_LIMIT_PER_MIN', 30),
+  /** 每 IP 每日上限（Open Mode 防濫用） */
+  perDayPerIp: intFromEnv('RATE_LIMIT_PER_DAY_IP', 500),
   /** 每 license key 每日上限（0 = 不限） */
   perDayPerLicense: intFromEnv('RATE_LIMIT_PER_DAY', 500),
   /** sliding window 大小 ms */
@@ -74,7 +76,12 @@ export const FEATURES = {
   enableAiQaReview: boolFromEnv('ENABLE_AI_QA_REVIEW', false),
   enablePromptCache: boolFromEnv('ENABLE_PROMPT_CACHE', true),
   /** 允許並行跑 measurement / comment / image / bom agent */
-  enableParallelAgents: boolFromEnv('ENABLE_PARALLEL_AGENTS', true)
+  enableParallelAgents: boolFromEnv('ENABLE_PARALLEL_AGENTS', true),
+  /**
+   * v2.1 Open Mode: 預設 false—無 X-License-Key 也能跨接口
+   * 未來付費版 v3 評估恢復 true
+   */
+  requireLicense: boolFromEnv('REQUIRE_LICENSE', false)
 };
 
 // ───────────────────────── CORS ─────────────────────────

@@ -18,9 +18,12 @@
  *   - 推薦呼叫順序：先 checkLicense，再 checkRate（避免無 license 也吃配額）
  */
 
-import { RATE_LIMITS } from '../config/limits.js';
+import { RATE_LIMITS, FEATURES } from '../config/limits.js';
 import { logger } from '../utils/logger.js';
 import { t } from '../utils/i18n.js';
+
+/** v2.1 Open Mode 虛擬 license—無 X-License-Key 請求都用它 */
+export const OPEN_ACCESS_LICENSE = 'OPEN-ACCESS';
 
 /** @type {Map<string, number[]>}  per IP 的 timestamp 陣列（sliding window） */
 const ipWindow = new Map();
@@ -36,14 +39,25 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
  * @returns {{ allowed: boolean, reason?: string }}
  */
 export function checkLicense(licenseKey) {
-  if (!licenseKey || typeof licenseKey !== 'string' || !licenseKey.trim()) {
+  // v2.1 Open Mode: 預設 requireLicense=false—無 / 連不上名單都放行當 OPEN-ACCESS
+  const has = !!(licenseKey && typeof licenseKey === 'string' && licenseKey.trim());
+  if (!FEATURES.requireLicense) {
+    if (!has) return { allowed: true, effectiveLicense: OPEN_ACCESS_LICENSE, isAdmin: false };
+    const trimmed = licenseKey.trim();
+    const admin = (process.env.ADMIN_LICENSE_KEY || '').trim();
+    const isAdmin = !!admin && trimmed === admin;
+    return { allowed: true, effectiveLicense: trimmed, isAdmin };
+  }
+  // 厳格模式 (未來 v3 付費版)
+  if (!has) {
     return { allowed: false, reason: t('error.missing_license') };
   }
   const allowed = getAllowedLicenses();
   if (!allowed.includes(licenseKey.trim())) {
     return { allowed: false, reason: t('error.invalid_license') };
   }
-  return { allowed: true };
+  const admin = (process.env.ADMIN_LICENSE_KEY || '').trim();
+  return { allowed: true, effectiveLicense: licenseKey.trim(), isAdmin: !!admin && licenseKey.trim() === admin };
 }
 
 /**

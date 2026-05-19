@@ -134,17 +134,65 @@
 
 ---
 
+## [KI-009] PDF.js 無法讀取掃描版 PDF 的文字
+
+- **發現於**：v2.1（PDF.js 導入後）
+- **嚴重程度**：LOW
+- **影響範圍**：`public/modules/upload.js`、所有掃描版 PDF 輸入
+- **暫時處理**：上傳後 `page.text` 則為空字串；LLM 只能靠 fileName 推測，結果不穩。UI 顯示 `偵測不到文字內容` warning。
+- **正式修復計劃**：v3 評估接 Tesseract.js 或 vision provider 做 OCR 退路。
+- **需要的條件**：OCR worker 設定或 vision API key + 6MB payload limit 規劃。
+
+---
+
+## [KI-010] relevantImages 上限 6 頁
+
+- **發現於**：v2.1
+- **嚴重程度**：LOW
+- **影響範圍**：`FILE_LIMITS.maxImagePages = 8`、`upload.js` 裁斷 sizeTable / BOM hint 超出頁
+- **暫時處理**：只取前 `maxImagePages` 頁 480px JPEG，超上限裁斷並記入 warnings。
+- **正式修復計劃**：v3 接 vision provider 後以 streaming / chunked upload 拿高。
+- **需要的條件**：Netlify Functions 支援超過 6MB 或改接 Background Functions / S3 直傳。
+
+---
+
+## [KI-011] Netlify cold-start 時 in-memory rate state 會清空
+
+- **發現於**：v2.1（Open Mode 後 IP rate limit 變唯一防線）
+- **嚴重程度**：LOW
+- **影響範圍**：`src/services/rateLimiter.js`、`netlify/functions/*` 所有 endpoint
+- **暫時處理**：接受 cost-controlling 只是「足夠好」。Netlify Function multi-instance / cold-start 會讓實際允許數 > per-min 30。
+- **正式修復計劃**：Phase 6 接 Upstash Redis 或 Netlify Edge KV 重寫 `rateLimiter` adapter。介面 (`checkRate / checkLicense`) 保持不變。
+- **需要的條件**：Redis / KV provider 以及 env var。
+
+---
+
+## [KI-012] 從 Open Mode 切回付費需重設環境變數
+
+- **發現於**：v2.1
+- **嚴重程度**：LOW
+- **影響範圍**：`src/config/limits.js`、`docs/api-contracts.md`、`README.md`
+- **暫時處理**：`FEATURES.requireLicense = boolFromEnv('REQUIRE_LICENSE', false)`；將來要接付費需設 `REQUIRE_LICENSE=true` + 準備好 `LICENSE_KEYS` / `ADMIN_LICENSE_KEY`。
+- **正式修復計劃**：v3 接 LemonSqueezy / Stripe webhooks 後動態同步 `LICENSE_KEYS`；不再依賴 env hard list。
+- **需要的條件**：付費 provider 在線 webhook + DB（e.g. Neon / Supabase）。
+
+---
+
 ## 追蹤狀態
 
 | ID | 狀態 | 嚴重 | 預計修復 |
 |---|---|---|---|
-| KI-001 | OPEN | LOW    | Phase 5 |
+| KI-001 | ✅ RESOLVED | LOW    | v2.1（PDF.js 已上） |
 | KI-002 | ✅ RESOLVED | MEDIUM | Group C（已用 tool_use 實作） |
 | KI-003 | OPEN | MEDIUM | 架構決定，不修 |
 | KI-004 | OPEN | MEDIUM | Phase 3 |
-| KI-005 | OPEN | LOW    | Phase 6（v2.1） |
+| KI-005 | ✅ RESOLVED | LOW    | v2.1（extractor 接 structured pages） |
 | KI-006 | ✅ RESOLVED | LOW    | Phase 3 wrap-up（v2.0.0） |
 | KI-007 | OPEN | LOW    | v3（需 vision provider） |
 | KI-008 | OPEN | LOW    | v3（設計決定） |
+| KI-009 | OPEN | LOW    | v3（OCR / vision） |
+| KI-010 | OPEN | LOW    | v3（vision + streaming upload） |
+| KI-011 | OPEN | LOW    | Phase 6（Redis / Edge KV） |
+| KI-012 | OPEN | LOW    | v3（付費 webhook + DB） |
 
 > 新增 issue 時請按 `KI-NNN` 編號遞增。修復後改為 ✅ RESOLVED 並補 commit hash。

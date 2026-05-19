@@ -23,7 +23,48 @@ import { logger } from '../../../src/utils/logger.js';
 import { t } from '../../../src/utils/i18n.js';
 import { FILE_LIMITS, CORS } from '../../../src/config/limits.js';
 
-const VERSION = 'v2.0.0';
+const VERSION = 'v2.1.0';
+
+// v2.1 新增—測試 / 交付際識別用
+export const FRAMEWORK_VERSION = VERSION;
+
+/**
+ * v2.1 驗證 PDF upload payload 結構 (techPackA / techPackB)
+ * 接受兩種 shape:
+ *   (1) v2.0 legacy: { rawText: '...' }
+ *   (2) v2.1 structured: { fileName, fileSize, pageCount, metadata, pages, rawText, sizeTablePages, bomPages, relevantImages }
+ * @returns {{ ok: true, warnings: string[] } | { ok:false, code, message, statusCode }}
+ */
+export function validatePdfPayload(side, obj) {
+  const warnings = [];
+  if (!obj || typeof obj !== 'object') {
+    return { ok: false, code: 'BAD_REQUEST', message: `${side} 欄位必須為 object`, statusCode: 400 };
+  }
+  // legacy v2.0 shape— 只要 rawText 存在就放行
+  const hasRaw = typeof obj.rawText === 'string' && obj.rawText.length > 0;
+  const hasPages = Array.isArray(obj.pages) && obj.pages.length > 0;
+  if (!hasRaw && !hasPages) {
+    return { ok: false, code: 'BAD_REQUEST', message: `${side} 需有 rawText 或 pages`, statusCode: 400 };
+  }
+  if (hasPages) {
+    for (const p of obj.pages) {
+      if (typeof p?.page !== 'number' || typeof p?.text !== 'string') {
+        warnings.push(`${side}.pages 某筆缺 page/text 欄位`);
+        break;
+      }
+    }
+  }
+  // payload 大小 warning (Netlify 6MB limit)
+  const approxSize = JSON.stringify(obj).length;
+  if (approxSize > 5 * 1024 * 1024) {
+    warnings.push(`${side} payload > 5MB，接近 Netlify 6MB 上限，建議拆 chapter 上傳`);
+  }
+  if (Array.isArray(obj.relevantImages) && obj.relevantImages.length > FILE_LIMITS.maxImagePages) {
+    warnings.push(`${side}.relevantImages > ${FILE_LIMITS.maxImagePages} 張，只取前 ${FILE_LIMITS.maxImagePages} 張`);
+    obj.relevantImages = obj.relevantImages.slice(0, FILE_LIMITS.maxImagePages);
+  }
+  return { ok: true, warnings };
+}
 
 // ─────────────────────────────────────────────
 // CORS
@@ -222,16 +263,18 @@ export function requireLicense(event, bodyData = {}) {
   const bodyLicense = typeof bodyData?.license_key === 'string' ? bodyData.license_key : null;
   const license = headerLicense || bodyLicense || null;
 
+  // v2.1 Open Mode: checkLicense 在 FEATURES.requireLicense=false 時永遠返 allowed=true。
+  // 只有 requireLicense=true (未來付費版) 才會回 401。
   const result = checkLicense(license);
   if (!result.allowed) {
-    const msg = (result.reason === 'missing')
-      ? t('error.missing_license')
-      : t('error.invalid_license');
+    const msg = result.reason || t('error.invalid_license');
     return { ok: false, code: 'UNAUTHORIZED', message: msg, statusCode: 401 };
   }
-
-  const adminKey = process.env.ADMIN_LICENSE_KEY || 'ADMIN-TEST-2026';
-  return { ok: true, license, isAdmin: license === adminKey };
+  return {
+    ok: true,
+    license: result.effectiveLicense || license || 'OPEN-ACCESS',
+    isAdmin: !!result.isAdmin
+  };
 }
 
 /**

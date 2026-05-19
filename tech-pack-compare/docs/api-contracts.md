@@ -2,6 +2,7 @@
 
 > All endpoints live under `/.netlify/functions/*` and accept the `/api/*` rewrite (see `netlify.toml`).
 > All responses are JSON. All errors include `ok: false` and a human-readable `error`.
+> **v2.1**: `meta.version = 'v2.1.0'`. **Open Mode 預設啟用** — `x-license-key` 變 optional。設 env `REQUIRE_LICENSE=true` 重新啟用嚴格模式。
 
 ---
 
@@ -10,8 +11,9 @@
 | Header | Required | Notes |
 |---|---|---|
 | `Content-Type: application/json` | yes (for POST) | |
-| `x-license-key` | yes | matches `ADMIN_LICENSE_KEY` or any in `LICENSE_KEYS` |
+| `x-license-key` | **optional** (v2.1) | Open Mode 下無也能試用。帶頭且符 `ADMIN_LICENSE_KEY` 可解 `DEBUG_ALL`。`REQUIRE_LICENSE=true` 時變為 required |
 | `x-request-id` | optional | echoed back in response `meta.requestId` |
+| `x-nf-client-connection-ip` | auto-set by Netlify | 用來 per-IP rate limit (30 / min, 500 / day) |
 
 ---
 

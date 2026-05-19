@@ -12,6 +12,7 @@
 - **Domain**: Apparel / Garment manufacturing
 - **Users**: Factory Sales & Merchandisers
 - **What it does**: Compare 2 PDF Tech Packs (buyer revisions) → produce a localized 繁中（HK）report covering text diff, measurement diff (POM-level), buyer comments, and image-embedded markups.
+- **Version**: v2.1.0。**Open Mode 預設啟用** — 無 `X-License-Key` 也能試用；`ADMIN_LICENSE_KEY` 帶頭仍可解 `DEBUG_ALL`。設 `REQUIRE_LICENSE=true` 重新啟用嚴格模式。
 - **Stack**: Vanilla JS + Tailwind CDN (frontend) · Netlify Functions on Node 18+ (backend) · Multi-LLM provider router.
 - **Hard constraints** (do NOT violate):
   - **No TypeScript.** Pure ES modules `.js`.

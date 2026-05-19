@@ -86,39 +86,118 @@ export async function runExtractorAgent({ input = {}, context = {}, requestId = 
 }
 
 function normalizeDoc(label, tp, warnings) {
-  const rawText = (tp.rawText || '').toString();
+  // v2.1: 優先用前端 PDF.js 已分頁的 structured pages
+  const structuredPages = Array.isArray(tp.pages) ? tp.pages : null;
   const imagePages = Array.isArray(tp.imagePages) ? tp.imagePages : [];
+  const relevantImages = Array.isArray(tp.relevantImages) ? tp.relevantImages : [];
+  const sizeTablePages = Array.isArray(tp.sizeTablePages) ? tp.sizeTablePages.filter((n) => Number.isInteger(n)) : [];
+  const bomPages = Array.isArray(tp.bomPages) ? tp.bomPages.filter((n) => Number.isInteger(n)) : [];
 
-  // 簡易把 rawText 依 form-feed / "Page N" 分頁；若沒有指示，視為單頁
-  let pages = splitTextToPages(rawText);
-  // 合併 imagePages（base64）
+  let pages = [];
+  let rawText = '';
+
+  if (structuredPages && structuredPages.length > 0) {
+    // v2.1 路徑
+    pages = structuredPages
+      .filter((p) => p && Number.isInteger(p.page))
+      .map((p) => ({
+        page: p.page,
+        text: (p.text || '').toString(),
+        imageBase64: null,
+        isSizeTable: !!p.isSizeTable,
+        isBom: !!p.isBom,
+        hasImage: !!p.hasImage
+      }));
+    rawText = pages.map((p) => p.text).join('\n\f\n');
+  } else {
+    // v2.0 legacy 路徑
+    rawText = (tp.rawText || '').toString();
+    pages = splitTextToPages(rawText);
+  }
+
+  // 合併 v2.0 imagePages（base64 全頁圖）
   for (const img of imagePages) {
     if (!img || typeof img.page !== 'number') continue;
     let p = pages.find((x) => x.page === img.page);
     if (!p) {
-      p = { page: img.page, text: '', imageBase64: null };
+      p = { page: img.page, text: '', imageBase64: null, isSizeTable: false, isBom: false, hasImage: false };
       pages.push(p);
     }
     if (typeof img.imageBase64 === 'string' && img.imageBase64.length > 0) {
       p.imageBase64 = img.imageBase64;
+      p.hasImage = true;
     }
   }
+
+  // 合併 v2.1 relevantImages（前端 render 的縮圖 base64，最多 6 頁）
+  for (const img of relevantImages) {
+    if (!img || typeof img.page !== 'number') continue;
+    let p = pages.find((x) => x.page === img.page);
+    if (!p) {
+      p = { page: img.page, text: '', imageBase64: null, isSizeTable: false, isBom: false, hasImage: false };
+      pages.push(p);
+    }
+    if (typeof img.base64 === 'string' && img.base64.length > 0) {
+      p.imageBase64 = img.base64;
+      p.hasImage = true;
+    }
+  }
+
   pages = pages.sort((a, b) => a.page - b.page);
 
   if (pages.length === 0) {
     warnings.push(`Tech Pack ${label} 沒有任何可解析內容`);
-    pages = [{ page: 1, text: '', imageBase64: null }];
+    pages = [{ page: 1, text: '', imageBase64: null, isSizeTable: false, isBom: false, hasImage: false }];
   }
 
-  const bom_table_raw = sniffSection(rawText, ['BOM', 'BILL OF MATERIAL', 'MATERIAL', '物料', '用料']);
-  const size_table_raw = sniffSection(rawText, ['SIZE', 'MEASUREMENT', 'SPEC', '尺寸', '規格']);
+  // 優先用前端 hint 抽 size_table_raw / bom_table_raw
+  let size_table_raw = null;
+  let bom_table_raw = null;
 
+  if (sizeTablePages.length > 0) {
+    size_table_raw = pages
+      .filter((p) => sizeTablePages.includes(p.page))
+      .map((p) => p.text)
+      .join('\n')
+      .trim() || null;
+  }
+  if (bomPages.length > 0) {
+    bom_table_raw = pages
+      .filter((p) => bomPages.includes(p.page))
+      .map((p) => p.text)
+      .join('\n')
+      .trim() || null;
+  }
+  // page-level isSizeTable / isBom hint (PDF.js 已標記)
+  if (!size_table_raw) {
+    const hinted = pages.filter((p) => p.isSizeTable).map((p) => p.text).join('\n').trim();
+    if (hinted) size_table_raw = hinted;
+  }
+  if (!bom_table_raw) {
+    const hinted = pages.filter((p) => p.isBom).map((p) => p.text).join('\n').trim();
+    if (hinted) bom_table_raw = hinted;
+  }
+  // fallback sniffSection
+  if (!bom_table_raw) {
+    bom_table_raw = sniffSection(rawText, ['BOM', 'BILL OF MATERIAL', 'MATERIAL', '物料', '用料']);
+  }
+  if (!size_table_raw) {
+    size_table_raw = sniffSection(rawText, ['SIZE', 'MEASUREMENT', 'SPEC', '尺寸', '規格']);
+  }
+
+  // metadata 優先用 tp.metadata (PDF.js info)
+  const tpMeta = tp.metadata && typeof tp.metadata === 'object' ? tp.metadata : {};
   const metadata = {
-    brand: sniffKv(rawText, ['Brand', 'BRAND', '品牌']) || null,
-    style: sniffKv(rawText, ['Style', 'STYLE', 'Style#', '款號']) || null,
-    season: sniffKv(rawText, ['Season', 'SEASON', '季度']) || null,
+    brand: sniffKv(rawText, ['Brand', 'BRAND', '品牌']) || tpMeta.brand || null,
+    style: sniffKv(rawText, ['Style', 'STYLE', 'Style#', '款號']) || tpMeta.style || null,
+    season: sniffKv(rawText, ['Season', 'SEASON', '季度']) || tpMeta.season || null,
     color: sniffKv(rawText, ['Color', 'COLOR', '顏色']) || null,
     fabric: sniffKv(rawText, ['Fabric', 'FABRIC', '布料']) || null,
+    title: tpMeta.title || null,
+    author: tpMeta.author || null,
+    pageCount: Number.isInteger(tpMeta.pageCount) ? tpMeta.pageCount : pages.length,
+    fileName: tp.fileName || null,
+    fileSize: Number.isFinite(tp.fileSize) ? tp.fileSize : null,
     doc_hash: shortHash(rawText || `${label}-empty`)
   };
 
@@ -181,16 +260,21 @@ function sniffKv(text, keys) {
 }
 
 function fallbackPackage() {
+  const emptyPage = { page: 1, text: '', imageBase64: null, isSizeTable: false, isBom: false, hasImage: false };
   return {
-    docA: { doc_label: 'A', pages: [{ page: 1, text: '', imageBase64: null }], metadata: emptyMeta(), bom_table_raw: null, size_table_raw: null },
-    docB: { doc_label: 'B', pages: [{ page: 1, text: '', imageBase64: null }], metadata: emptyMeta(), bom_table_raw: null, size_table_raw: null },
+    docA: { doc_label: 'A', pages: [emptyPage], metadata: emptyMeta(), bom_table_raw: null, size_table_raw: null },
+    docB: { doc_label: 'B', pages: [emptyPage], metadata: emptyMeta(), bom_table_raw: null, size_table_raw: null },
     buyer_comments: '',
     warnings: []
   };
 }
 
 function emptyMeta() {
-  return { brand: null, style: null, season: null, color: null, fabric: null, doc_hash: 'empty' };
+  return {
+    brand: null, style: null, season: null, color: null, fabric: null,
+    title: null, author: null, pageCount: 0, fileName: null, fileSize: null,
+    doc_hash: 'empty'
+  };
 }
 
 export default { runExtractorAgent };

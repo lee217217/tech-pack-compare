@@ -2,6 +2,10 @@
 
 從 0 到上線 Netlify 嘅 step-by-step。預估時間: **15 分鐘**(假設 Netlify / Perplexity API key 已備妥)。
 
+> **v2.1 重點**：Open Mode 預設啟用—上線後任何人無需 license 即可試用。
+> `LICENSE_KEYS` 變為 **optional**，只有要重新啟用嚴格模式時 (`REQUIRE_LICENSE=true`) 才必需。
+> `ADMIN_LICENSE_KEY` 仍建議設—帶頭仍能解 `DEBUG_ALL` outputMode。
+
 ---
 
 ## 0. 前置條件
@@ -24,7 +28,7 @@ LICENSE_KEYS='ADMIN-TEST-2026,USER-DEMO-001' \
 node --test tests/
 ```
 
-**預期**: `# pass 39 / # fail 0`。
+**預期**: `# pass 50 / # fail 0`（v2.1）。
 
 開本機 server:
 
@@ -81,8 +85,9 @@ netlify init    # 跟提示選 "Create & configure a new site"
 |---|---|---|
 | `LLM_PROVIDER` | `perplexity` | production 鎖 Sonar Pro |
 | `PERPLEXITY_API_KEY` | `pplx-xxx...` | 真實 key,**不要 commit** |
-| `ADMIN_LICENSE_KEY` | `ADMIN-PROD-{隨機字串}` | 唯一 admin key,可開 DEBUG_ALL |
-| `LICENSE_KEYS` | `ADMIN-PROD-xxx,USER-001,USER-002` | 逗號分隔 |
+| `ADMIN_LICENSE_KEY` | `ADMIN-PROD-{隨機字串}` | **選但建議**。設了之後帶在 header 可解 DEBUG_ALL |
+| `LICENSE_KEYS` | `ADMIN-PROD-xxx,USER-001,USER-002` | **Optional** · 只在 `REQUIRE_LICENSE=true` 時必需 |
+| `REQUIRE_LICENSE` | `false` (預設) | 設 `true` 重新啟用嚴格模式 |
 | `RATE_LIMIT_RPM` | `30` | 每 license 每分鐘上限 (預設 30) |
 | `CACHE_TTL_SECONDS` | `300` | 5 分鐘 cache |
 | `LOG_LEVEL` | `info` | `info` / `warn` / `error` |
@@ -143,7 +148,7 @@ curl -s -X POST "$SITE_URL/api/run-workflow" \
 ## 7. 監控 & 故障排查
 
 - Netlify Dashboard → **Functions** tab 看 invocation log
-- 401 `UNAUTHORIZED` → `LICENSE_KEYS` 沒包該 key
+- 401 `UNAUTHORIZED` → 只會在 `REQUIRE_LICENSE=true` 並 `LICENSE_KEYS` 沒包該 key 時出現；Open Mode 預設不會丟 401
 - 429 `RATE_LIMITED` → 調 `RATE_LIMIT_RPM`
 - 413 `PAYLOAD_TOO_LARGE` → Netlify body limit 6MB,當前 spec 20MB 是前端 client-side guard
 - 500 + `meta.warnings` 含 "mock fallback" → `PERPLEXITY_API_KEY` 失效或超量,llmClient 自動 fallback 到 mock provider

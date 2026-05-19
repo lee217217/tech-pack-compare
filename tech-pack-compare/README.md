@@ -3,29 +3,31 @@
 > 製衣業 Tech Pack 智能比對系統 — Multi-Agent + Schema-Validated + Provider-Locked (Perplexity Sonar Pro)
 > Target users: Apparel Sales / Merchandiser / PD team
 > UI language: 繁體中文（香港）
-> 版本: **v2.0.0** (2026-05-19)
+> 版本: **v2.1.0** (2026-05-19) · **Open Mode 預設啟用**
 
 ---
 
-## 🚀 Quick Start (30 秒跨門檻)
+## 🚀 Quick Start (無需 license)
 
 ```bash
 cd v2
 npm install
 
-# (a) Mock 離線跨 — 39/39 全綠
-LLM_PROVIDER=mock \
-  ADMIN_LICENSE_KEY='ADMIN-TEST-2026' \
-  LICENSE_KEYS='ADMIN-TEST-2026,USER-DEMO-001' \
-  node --test tests/
+# (a) Mock 離線測 — 50/50 全綠
+LLM_PROVIDER=mock node --test tests/
 
-# (b) 本機跨 UI
-LLM_PROVIDER=mock \
-  ADMIN_LICENSE_KEY='ADMIN-TEST-2026' \
-  LICENSE_KEYS='ADMIN-TEST-2026,USER-DEMO-001' \
-  netlify dev
-# 開 http://localhost:8888, License Key 輸 USER-DEMO-001
+# (b) 本機跑 UI （v2.1 Open Mode：不需 LICENSE_KEYS）
+LLM_PROVIDER=mock netlify dev
+# 開 http://localhost:8888
+# 拖 PDF 到 dropzone、選 outputMode、按「執行」即可
+
+# (選) 要解 DEBUG_ALL outputMode 才需 admin license。在 inspector 輸 ADMIN_LICENSE_KEY 到 X-License-Key 欄位即可。
 ```
+
+可選 env：
+- `REQUIRE_LICENSE=true` — 重新啟用嚴格模式（未來付費版用）
+- `ADMIN_LICENSE_KEY` — 設了之後帶在 `X-License-Key` header 可解 `DEBUG_ALL`
+- `LICENSE_KEYS` — 只在 `REQUIRE_LICENSE=true` 時必需
 
 上線 Netlify: 看 [DEPLOY.md](./DEPLOY.md) (15 分鐘 step-by-step)。
 

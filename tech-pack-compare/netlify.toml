@@ -25,7 +25,7 @@
     # Update if you add more CDN.
     # connect-src 只允許 self + Perplexity Sonar Pro endpoint（v2 唯一啟用 provider）。
     # 其他 provider domain 已移除以縮小 attack surface（KI-008）。
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; img-src 'self' data: blob:; connect-src 'self' https://api.perplexity.ai; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://unpkg.com https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: blob:; connect-src 'self' https://api.perplexity.ai; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
 
 # Long cache for static assets
 [[headers]]
