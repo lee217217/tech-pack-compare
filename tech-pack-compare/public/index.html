@@ -1,24 +1,31 @@
 <!--
   Path:     public/index.html
-  Purpose:  AI Tech Pack Comparator v2.1 — 3-pane SaaS layout + 4-step wizard
+  Purpose:  AI Tech Pack Comparator v2.1.1 — 3-pane SaaS layout + 4-step wizard
+            Linear / Vercel / Notion 級設計;Indigo+Slate B2B;Inter + JetBrains Mono + Noto Sans TC
   Depends:  public/app.js (ES module), public/style.css, public/modules/*,
-            Tailwind CDN, PDF.js CDN (cdnjs), SheetJS CDN
+            Tailwind CDN, PDF.js .mjs (lazy load via upload.js), SheetJS CDN
 -->
 <!doctype html>
 <html lang="zh-HK">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AI Tech Pack Comparator v2.1</title>
+  <title>AI Tech Pack Comparator v2.1.1</title>
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
   <link rel="stylesheet" href="./style.css" />
+
+  <!-- Tailwind & XLSX (PDF.js 改為 upload.js lazy load .mjs) -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     tailwind.config = { darkMode: 'class' };
+    // boot marker — upload.js 會在 import.meta scope log 載入版本
+    window.__APP_BOOT__ = { startedAt: Date.now(), version: 'v2.1.1' };
   </script>
 </head>
 <body>
@@ -29,50 +36,60 @@
     <!-- ── Sidebar (240px) ────────────────────────────────── -->
     <aside class="sidebar">
       <div class="sidebar-head">
-        <div class="logo">
-          <span class="logo-mark">⌬</span>
+        <a class="logo" href="#" aria-label="Tech Pack Comparator">
+          <span class="logo-mark" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="lg1" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#4F46E5"/><stop offset="1" stop-color="#7C3AED"/>
+                </linearGradient>
+              </defs>
+              <rect x="2" y="2" width="28" height="28" rx="7" fill="url(#lg1)"/>
+              <path d="M9 11h14M9 16h10M9 21h14" stroke="white" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </span>
           <div class="logo-text">
             <div class="logo-title">Tech Pack</div>
             <div class="logo-sub">Comparator</div>
           </div>
-        </div>
-        <div class="version-badge">v2.1.0</div>
+          <span class="version-badge">v2.1.1</span>
+        </a>
       </div>
 
       <nav class="side-nav">
+        <div class="side-nav-group">主要</div>
         <a class="side-nav-item active" data-goto-step="1">
-          <span class="side-nav-icon">▸</span><span>工作區</span>
+          <svg class="side-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+          <span>工作區</span>
         </a>
         <a class="side-nav-item">
-          <span class="side-nav-icon">⏱</span><span>歷史紀錄</span>
+          <svg class="side-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+          <span>歷史紀錄</span>
         </a>
         <a class="side-nav-item">
-          <span class="side-nav-icon">⚙</span><span>設定</span>
+          <svg class="side-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="2"/><path d="M13.5 9.5l-.7-1.2.7-1.2-1.4-.8-.5-1.4H10l-1.2.7-1.2-.7-.8 1.4-1.4.5v1.6l.7 1.2-.7 1.2 1.4.8.5 1.4H10l1.2-.7 1.2.7.8-1.4 1.4-.5z"/></svg>
+          <span>設定</span>
         </a>
-        <a class="side-nav-item" href="https://github.com/" target="_blank" rel="noopener">
-          <span class="side-nav-icon">📘</span><span>說明文件</span>
+
+        <div class="side-nav-group">資源</div>
+        <a class="side-nav-item" href="#" rel="noopener">
+          <svg class="side-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 2h6l4 4v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M10 2v4h4"/></svg>
+          <span>文件</span>
+        </a>
+        <a class="side-nav-item" href="#" rel="noopener">
+          <svg class="side-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><path d="M6 6.5a2 2 0 1 1 3 1.7c-.6.3-1 .7-1 1.3M8 12.2v.01"/></svg>
+          <span>支援</span>
+        </a>
+        <a class="side-nav-item" href="#" rel="noopener">
+          <svg class="side-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4h10v7H7l-3 3V4z"/></svg>
+          <span>反饋</span>
         </a>
       </nav>
 
-      <div class="side-status">
-        <div class="side-row">
-          <span class="side-row-label">Provider</span>
-          <span id="provider-name" class="side-row-value mono">—</span>
-        </div>
-        <div class="side-row">
-          <span class="side-row-label">Mode</span>
-          <span id="side-mode-chip" class="side-row-value mono">FULL</span>
-        </div>
-        <div class="side-row">
-          <span class="side-row-label">License</span>
-          <span id="side-license-chip" class="side-row-value mono">OPEN</span>
-        </div>
-      </div>
-
       <div class="side-foot">
         <button id="theme-toggle" class="theme-toggle" title="切換主題">
-          <span class="block dark:hidden">🌙 深色</span>
-          <span class="hidden dark:block">☀️ 淺色</span>
+          <span class="th-light">🌙 深色</span>
+          <span class="th-dark">☀️ 淺色</span>
         </button>
         <div class="side-foot-note">Perplexity Sonar Pro · Open Mode</div>
       </div>
@@ -83,84 +100,180 @@
 
       <!-- Top bar -->
       <header class="topbar">
-        <div class="topbar-title">
-          <h1 class="page-title">AI Tech Pack Comparator</h1>
-          <p class="page-subtitle">比對舊新版 Tech Pack 差異 — 自動產出尺寸 / 註解 / 圖像 / BOM 變更表</p>
+        <div class="topbar-left">
+          <nav class="breadcrumb" aria-label="breadcrumb">
+            <span class="bc-item">Workspace</span>
+            <span class="bc-sep">›</span>
+            <span class="bc-item">Compare Tech Pack</span>
+            <span class="bc-sep">›</span>
+            <span class="bc-item bc-active" id="bc-step">Step 1 · 上傳 PDF</span>
+          </nav>
         </div>
         <div class="topbar-right">
-          <span id="duration-pill" class="pill hidden"></span>
-          <span id="tokens-pill" class="pill hidden"></span>
+          <span id="provider-pill" class="status-pill pill-success" title="LLM provider">
+            <span class="pill-dot"></span>
+            <span class="pill-icon">🧠</span>
+            <span class="pill-label">Provider:</span>
+            <span class="pill-value" id="provider-name">Mock</span>
+          </span>
+          <span id="mode-pill" class="status-pill pill-primary" title="Output mode">
+            <span class="pill-icon">⚡</span>
+            <span class="pill-label">Mode:</span>
+            <span class="pill-value mono" id="side-mode-chip">FULL</span>
+          </span>
+          <span id="license-pill" class="status-pill pill-warning" title="License">
+            <span class="pill-icon">🔑</span>
+            <span class="pill-label">License:</span>
+            <span class="pill-value mono" id="side-license-chip">OPEN</span>
+          </span>
+          <span id="duration-pill" class="status-pill pill-muted hidden" title="耗時">
+            <span class="pill-icon">⏱</span>
+            <span class="pill-value mono" id="duration-val">—</span>
+          </span>
+          <span id="tokens-pill" class="status-pill pill-muted hidden" title="Token 用量">
+            <span class="pill-icon">🪙</span>
+            <span class="pill-value mono" id="tokens-val">—</span>
+          </span>
+          <div class="avatar" title="User">U</div>
           <span id="status-msg" class="status-msg"></span>
         </div>
       </header>
 
       <!-- Wizard steps -->
-      <ol class="wizard">
-        <li class="wizard-step active" data-step="1"><span class="wizard-num">1</span><span class="wizard-label">上傳 PDF</span></li>
-        <li class="wizard-step" data-step="2"><span class="wizard-num">2</span><span class="wizard-label">比對設定</span></li>
-        <li class="wizard-step" data-step="3"><span class="wizard-num">3</span><span class="wizard-label">檢視 &amp; 執行</span></li>
-        <li class="wizard-step" data-step="4"><span class="wizard-num">4</span><span class="wizard-label">結果 &amp; 匯出</span></li>
+      <ol class="wizard wizard-lg" aria-label="工作流程">
+        <li class="wizard-step active" data-step="1">
+          <span class="wizard-circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0-12L7 9m5-5l5 5M5 20h14"/></svg>
+          </span>
+          <div class="wizard-text">
+            <div class="wizard-label">上傳 PDF</div>
+            <div class="wizard-sub">Tech Pack A & B</div>
+          </div>
+        </li>
+        <li class="wizard-conn"></li>
+        <li class="wizard-step" data-step="2">
+          <span class="wizard-circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1A2 2 0 1 1 4.4 17l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8L4.2 7A2 2 0 1 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1A2 2 0 1 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          </span>
+          <div class="wizard-text">
+            <div class="wizard-label">比對設定</div>
+            <div class="wizard-sub">Style / Mode</div>
+          </div>
+        </li>
+        <li class="wizard-conn"></li>
+        <li class="wizard-step" data-step="3">
+          <span class="wizard-circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6,4 20,12 6,20" stroke-linejoin="round"/></svg>
+          </span>
+          <div class="wizard-text">
+            <div class="wizard-label">檢視 & 執行</div>
+            <div class="wizard-sub">Run workflow</div>
+          </div>
+        </li>
+        <li class="wizard-conn"></li>
+        <li class="wizard-step" data-step="4">
+          <span class="wizard-circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12m0 0l-5-5m5 5l5-5M5 20h14"/></svg>
+          </span>
+          <div class="wizard-text">
+            <div class="wizard-label">結果 & 匯出</div>
+            <div class="wizard-sub">Excel · Tabs</div>
+          </div>
+        </li>
       </ol>
 
       <!-- ─── Step 1: Upload ─────────────────────────────── -->
       <section class="step-panel" data-step="1">
-        <div class="upload-grid">
-          <div class="upload-col">
-            <div class="upload-label">舊版 Tech Pack (A)</div>
-            <div id="dropzone-a"></div>
-          </div>
-          <div class="upload-col">
-            <div class="upload-label">新版 Tech Pack (B)</div>
-            <div id="dropzone-b"></div>
+        <div class="card workspace-card">
+          <header class="card-header">
+            <div class="card-header-left">
+              <span class="card-icon">📤</span>
+              <div>
+                <h3 class="card-title">上傳兩份 Tech Pack PDF</h3>
+                <p class="card-sub">舊版 (A) vs 新版 (B) — 系統會自動偵測尺寸表與 BOM 表的位置</p>
+              </div>
+            </div>
+          </header>
+          <div class="card-body">
+            <div class="upload-grid">
+              <div class="upload-col">
+                <div class="upload-label">
+                  <span class="upload-chip">A</span>
+                  <span>舊版 Tech Pack</span>
+                </div>
+                <div id="dropzone-a"></div>
+              </div>
+              <div class="upload-col">
+                <div class="upload-label">
+                  <span class="upload-chip upload-chip-b">B</span>
+                  <span>新版 Tech Pack</span>
+                </div>
+                <div id="dropzone-b"></div>
+              </div>
+            </div>
+            <p class="helper-text">💡 提示:上傳後會自動偵測尺寸表 / BOM 表頁碼,並挑前 6 張關鍵頁渲為圖像供 LLM 參考。</p>
           </div>
         </div>
         <div class="step-actions">
-          <button class="btn btn-primary" data-goto-step="2">下一步 →</button>
+          <button class="btn btn-primary btn-arrow" data-goto-step="2">下一步 <span class="btn-arrow-i">→</span></button>
         </div>
       </section>
 
       <!-- ─── Step 2: Configure ──────────────────────────── -->
       <section class="step-panel hidden" data-step="2">
-        <div class="form-grid">
-          <div class="form-field">
-            <label for="style-number">款式編號 (Style Number)</label>
-            <input id="style-number" type="text" class="form-input mono" value="STYLE-DEMO-001" />
-          </div>
-          <div class="form-field">
-            <label for="brand-name">品牌 (Brand)</label>
-            <input id="brand-name" type="text" class="form-input" placeholder="例: ACME" />
-          </div>
-          <div class="form-field">
-            <label for="season-name">季度 (Season)</label>
-            <input id="season-name" type="text" class="form-input" placeholder="例: FW26" />
-          </div>
-        </div>
-
-        <div class="form-field">
-          <label for="buyer-comments">買手註解 (Buyer Comments)</label>
-          <textarea id="buyer-comments" class="form-input" rows="3" placeholder="(選填) 貼上買手反饋..."></textarea>
-        </div>
-
-        <fieldset class="output-mode-field">
-          <legend>輸出模式 (Output Mode)</legend>
-          <div id="output-mode-group" class="output-mode-group"></div>
-        </fieldset>
-
-        <details class="advanced">
-          <summary id="advanced-toggle" aria-expanded="false">進階設定 (License Key)</summary>
-          <div id="advanced-panel">
-            <div class="form-field">
-              <label for="license-key">License Key (Open Mode 下可留空)</label>
-              <input id="license-key" type="text" class="form-input mono" autocomplete="off" spellcheck="false"
-                     placeholder="ADMIN-XXX 可解鎖 DEBUG_ALL" />
-              <p class="form-hint">v2.1 Open Mode 啟用 — 無 License 也能跨 endpoint;Admin License (ADMIN-*) 可解鎖 DEBUG_ALL。</p>
+        <div class="card workspace-card">
+          <header class="card-header">
+            <div class="card-header-left">
+              <span class="card-icon">⚙️</span>
+              <div>
+                <h3 class="card-title">比對設定</h3>
+                <p class="card-sub">填寫款式資訊並選擇輸出模式</p>
+              </div>
             </div>
+          </header>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="style-number">款式編號 (Style Number)</label>
+                <input id="style-number" type="text" class="form-input mono" value="STYLE-DEMO-001" />
+              </div>
+              <div class="form-field">
+                <label for="brand-name">品牌 (Brand)</label>
+                <input id="brand-name" type="text" class="form-input" placeholder="例: ACME" />
+              </div>
+              <div class="form-field">
+                <label for="season-name">季度 (Season)</label>
+                <input id="season-name" type="text" class="form-input" placeholder="例: FW26" />
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label for="buyer-comments">買手註解 (Buyer Comments)</label>
+              <textarea id="buyer-comments" class="form-input" rows="3" placeholder="(選填) 貼上買手反饋..."></textarea>
+            </div>
+
+            <fieldset class="output-mode-field">
+              <legend>輸出模式 (Output Mode)</legend>
+              <div id="output-mode-group" class="output-mode-group"></div>
+            </fieldset>
+
+            <details class="advanced">
+              <summary id="advanced-toggle" aria-expanded="false">進階設定 (License Key)</summary>
+              <div id="advanced-panel">
+                <div class="form-field">
+                  <label for="license-key">License Key (Open Mode 下可留空)</label>
+                  <input id="license-key" type="text" class="form-input mono" autocomplete="off" spellcheck="false"
+                         placeholder="ADMIN-XXX 可解鎖 DEBUG_ALL" />
+                  <p class="form-hint">v2.1 Open Mode 啟用 — 無 License 也能跨 endpoint;Admin License (ADMIN-*) 可解鎖 DEBUG_ALL。</p>
+                </div>
+              </div>
+            </details>
           </div>
-        </details>
+        </div>
 
         <div class="step-actions">
           <button class="btn btn-ghost" data-goto-step="1">← 上一步</button>
-          <button class="btn btn-primary" data-goto-step="3">下一步 →</button>
+          <button class="btn btn-primary btn-arrow" data-goto-step="3">下一步 <span class="btn-arrow-i">→</span></button>
         </div>
       </section>
 
@@ -168,15 +281,15 @@
       <section class="step-panel hidden" data-step="3">
         <div class="review-grid">
           <div class="card">
-            <header class="card-header"><h3 class="card-title">設定確認</h3></header>
+            <header class="card-header"><h3 class="card-title">📋 設定確認</h3></header>
             <div class="card-body" id="review-summary"></div>
           </div>
           <div class="card">
-            <header class="card-header"><h3 class="card-title">執行</h3></header>
+            <header class="card-header"><h3 class="card-title">▶ 執行</h3></header>
             <div class="card-body">
               <p class="muted small">點擊「開始比對」後,workflow 將跑 7 個 agent (extractor → measurement → comment → image → bom → summarizer → qaReview)。</p>
               <div class="step-actions">
-                <button id="run-btn" class="btn btn-primary"><span class="btn-icon">▶</span><span>開始比對</span></button>
+                <button id="run-btn" class="btn btn-primary btn-glow"><span class="btn-icon">▶</span><span>開始比對</span></button>
                 <button class="btn btn-ghost" data-goto-step="2">← 修改設定</button>
               </div>
             </div>
@@ -185,7 +298,7 @@
 
         <!-- Progress (visible after run) -->
         <section id="progress-section" class="hidden card progress-card">
-          <header class="card-header"><h3 class="card-title">處理進度</h3></header>
+          <header class="card-header"><h3 class="card-title">⚡ 處理進度</h3></header>
           <div class="card-body">
             <ol id="progress-list" class="progress-list"></ol>
           </div>
@@ -196,17 +309,18 @@
       <section class="step-panel hidden" data-step="4">
         <div class="step-actions step-actions-right">
           <button class="btn btn-ghost" data-goto-step="3">← 重新執行</button>
-          <button id="export-btn" class="btn btn-primary" disabled><span class="btn-icon">⬇</span><span>匯出 Excel (7 sheet)</span></button>
+          <button id="export-btn" class="btn btn-primary btn-arrow" disabled><span class="btn-icon">⬇</span><span>匯出 Excel (7 sheet)</span></button>
         </div>
 
         <section id="result-section" class="hidden card result-card">
-          <nav class="tab-nav">
-            <button class="tab-btn tab-btn-active" data-tab="summary">總結</button>
-            <button class="tab-btn" data-tab="measurement">尺寸變更</button>
-            <button class="tab-btn" data-tab="comments">註解 &amp; 圖像</button>
-            <button class="tab-btn" data-tab="bom">物料清單</button>
-            <button class="tab-btn" data-tab="qa">QA Review</button>
-            <button class="tab-btn hidden" id="tab-debug-btn" data-tab="debug">Debug</button>
+          <nav class="tab-nav" role="tablist">
+            <button class="tab-btn tab-btn-active" data-tab="summary" role="tab">總結</button>
+            <button class="tab-btn" data-tab="measurement" role="tab">尺寸變更</button>
+            <button class="tab-btn" data-tab="comments" role="tab">註解 &amp; 圖像</button>
+            <button class="tab-btn" data-tab="bom" role="tab">物料清單</button>
+            <button class="tab-btn" data-tab="qa" role="tab">QA Review</button>
+            <button class="tab-btn hidden" id="tab-debug-btn" data-tab="debug" role="tab">Debug</button>
+            <span class="tab-indicator" aria-hidden="true"></span>
           </nav>
           <div class="tab-content">
             <div id="tab-panel-summary" class="tab-panel"></div>
@@ -227,7 +341,7 @@
       </section>
 
       <footer class="workspace-foot">
-        Provider 鎖定 Perplexity Sonar Pro · UI 繁中(HK) · v2.1.0 · Open Mode · KI-006 ✅ · KI-008
+        Provider 鎖定 Perplexity Sonar Pro · UI 繁中(HK) · v2.1.1 · Open Mode · KI-001/005/006 ✅
       </footer>
     </main>
 
@@ -235,11 +349,15 @@
     <aside class="inspector">
       <header class="inspector-head">
         <h3 class="inspector-title">工作摘要</h3>
+        <span class="inspector-subtitle">即時狀態</span>
       </header>
       <div id="inspector-body" class="inspector-body"></div>
     </aside>
 
   </div>
+
+  <!-- Confetti container (loading complete) -->
+  <div id="confetti-root" class="confetti-root" aria-hidden="true"></div>
 
   <script type="module" src="./app.js"></script>
 </body>

@@ -23,7 +23,7 @@ import { logger } from '../../../src/utils/logger.js';
 import { t } from '../../../src/utils/i18n.js';
 import { FILE_LIMITS, CORS } from '../../../src/config/limits.js';
 
-const VERSION = 'v2.1.0';
+const VERSION = 'v2.1.1';
 
 // v2.1 新增—測試 / 交付際識別用
 export const FRAMEWORK_VERSION = VERSION;

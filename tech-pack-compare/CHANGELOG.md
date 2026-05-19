@@ -4,6 +4,89 @@
 
 ---
 
+## [2.1.1] — 2026-05-19
+
+主題：**PDF.js 載入修復 (KI-009) + UI 升級至 Linear/Vercel/Notion 級 (UI-1〜12)**。
+
+### Fixed — 修復
+
+#### KI-009 「PDF.js 尚未載入」
+- `netlify.toml` CSP 完整覆蓋：`script-src` + `worker-src` + `style-src` + `font-src` 同時允許 `cdnjs.cloudflare.com` + `cdn.jsdelivr.net` + Google Fonts 系列。
+- `public/index.html` 移除原 inline `<script src>` PDF.js boot，改由 `upload.js` ES module dynamic `import()` `.mjs` 載入。Tailwind / SheetJS / Google Fonts 仍以 CDN script 點型型載入。
+- `public/modules/upload.js`：
+  - `PDFJS_VERSION = '4.0.379'` 預 pin。
+  - `PDFJS_CDNS = [cdnjs, jsdelivr]` (順序 fallback)。
+  - `loadPdfJs()` 每 CDN 試 2 次，全部失敗則 throw 友善訊息「無法載入 PDF.js · 請檢查網路」。
+  - `prewarmPdfJs()` 用 `requestIdleCallback` 預讀，免首次上傳延遲。
+  - `getPdfJsInfo()` 提供給 Inspector 關於「引擎資訊」卡使用。
+  - `console.log('[Tech Pack Comparator] PDF.js x.y.z loaded from <cdn>')` boot 診斷（用戶明確要求，例外於 no-console-log 規則）。
+  - 上傳前 `typeof pdfjsLib === 'undefined'` 檢查及頻便 trigger lazy load。
+
+### Changed — UI 升級
+
+#### UI-1 Design Tokens
+- `style.css` 已有 tokens 架構，v2.1.1 記入 「.dark override」來送兩個 colour scheme。新增 `--brand-50/100/300/500/600/700/800`、`--success-bg`、`--sev-yellow-bg`、`--sev-red-bg` 變量作為 chip / pill 現有 token。
+
+#### UI-2/7 Top Nav + Sidebar
+- topbar 加入 breadcrumb (`Workspace › Compare Tech Pack › Step N · …`) 按 step 動態更新。
+- 5 個 status pill: Provider / Mode / License / Duration / Tokens 使用 chip-style + pulse dot + hover lift。
+- avatar (32px gradient circle)。sidebar 版本 badge v2.1.1。
+
+#### UI-3 Stepper 升級
+- `wizard-lg` ：48px 圓圈 + 2px border + SVG icon。active step `box-shadow 0 0 0 4px var(--brand-100)` + `pulse-circle` animation。done step 顯示 `✓`。connector 由 done step 個後轉為 `linear-gradient(brand-500→success)`。
+
+#### UI-4 Dropzone 三態
+- idle / hover (lift -1px + indigo border) / drag-over (`scale 1.01` + glow ring + indigo bg) 狀態。
+- 上傳完成：`.dz-done` 卡 (thumb / filename / pages·size / 重新上傳 + 移除-X 這兩個 icon button)。進度時 `dz-progress-pct` 顯示百分比。
+
+#### UI-5 Workspace Card + Helper text
+- `.workspace-card` 加 `card-header-left` (圖示 + 標題 + sub-text)。`card-icon` 36px rounded-square with indigo bg。`.helper-text` 藍色 left border + brand-50 bg 提示條。
+- 「下一步」按鈕 `.btn-arrow` + `.btn-glow` 加漸層 hover 動画。
+
+#### UI-6 Inspector 升級 (5 collapse cards + empty SVG)
+- 原本 flat sections 改為 5 個 `<details>` 原生 collapse 卡：
+  1. 📄 上傳的檔案 （A/B file-card with file-pill / name / meta / size/BOM chips）
+  2. ⚙️ 執行配置
+  3. 📊 結果統計 (2×2 stat-grid, 20px num + uppercase label)
+  4. 📜 最近動作 (in-memory 最後 5 個動作時間軸)
+  5. 🔧 引擎資訊 (PDF.js 版本 / CDN / UI 版本 / outputMode)
+- empty state SVG 提醒使用者上傳 PDF。
+
+#### UI-9/10/11 Micro-interactions / Loading / Dark mode
+- 所有 `.card`/`.btn`/`.ins-card` 加 hover lift -1px 動画。
+- `.skeleton` shimmer keyframe class 備用。
+- `.dark` override block ：workspace-card header gradient / helper-text / pill / stat 背景取暗色。`toast.js` (未動) 本來已含交互從使用 dark token。
+
+#### UI-12 4 Tab 升級
+- Summary tab: `.sum-hero` 四個 28px gradient hero stat 取代原簡單 stat-grid。
+- Tab 底部 `.tab-indicator` 滑動 underline (cubic-bezier `.4,0,.2,1` 0.3s)，遷換 tab 時 `transform: translateX` + `width` 同步動態。resize 時重新計算。
+- _measurement / comments / bom / debug 仍用 v2.1.0 結構 (在 UI-1/3/4/6 token 上接手即升級)。Phase-2 可再加 sticky header / split view。_
+
+#### 其他
+- **Confetti**: workflow 完成彈 36 個 CSS keyframe 彩條（無 canvas / 無外部 lib，2.2s 自清）。
+- **Rotating tips**: Step 1 `.helper-text` 每 5s 輪換 5 句提示。
+- **Activity timeline**: in-memory 保留最近 5 動作（上傳 A / 上傳 B / Workflow 完成 …）。
+
+### Tests
+- 新增 `tests/pdfjs.load.test.js` — 12 個結構性檢查（版本鎖定、CDN 清單、`.mjs` 後綴、retry/fallback、GlobalWorkerOptions、友善訊息、CSP coverage)。未真實 fetch CDN — 由 LOCAL_VERIFICATION_CHECKLIST 手動驗證。
+- 全部 mock test：**62/62 通過** (原 50 + 12 新)。
+
+### Design Decisions (auto-decided per 「不中途問問題」規則)
+1. PDF.js 改 ES module dynamic import (.mjs)，不在 HTML 設 inline `<script src>`。Pros: CSP 更嚴、worker URL 完全動態、需要時才載入。Cons: 期望現代瀏覽器 (Chrome 89+/Safari 14+/Firefox 89+)。
+2. boot 用 `console.log` 印 PDF.js CDN + 版本（用戶明確要求 — 例外於 no-console-log 規則，其他仍用 logger）。
+3. dynamic import 用 `/* @vite-ignore */` 註解接受未來 bundler 化容错。
+4. Inspector 用 `<details open>` HTML 原生 collapse 而非自訂 JS（0 deps + native a11y）。
+5. Confetti 用 36 個 `<span>` + CSS @keyframes（無需 canvas / 外部 lib）。
+6. Activity timeline 僅 in-memory（重新整理即清空，符「最近 5 個」規格）。
+7. Tab indicator 單一 `.tab-indicator` span 用 `transform: translateX` + `width` 動作（變化 1 個元素 vs 多個 underline）。
+8. 預設 `requestIdleCallback` 預載 PDF.js，免首次上傳延遲 ~500　1500ms。
+
+### Known Limitations (carried to v2.1.2)
+- `measurement` / `comments` / `bom` / `debug` 4 tab 進階 UI-12 (filter / sticky / split-view / impact stats) 未都全部落地，現階段繼承 v2.1.0 表格佈局 + UI-1 token 上色。全部 5 outputMode 均仍可用。
+- Local screenshot 由 sandbox 無 puppeteer/playwright headless browser 跡 — 詳見 `docs/LOCAL_VERIFICATION_CHECKLIST_v2.1.1.md`。
+
+---
+
 ## [2.1.0] — 2026-05-19
 
 主題：**Open Mode (免注冊試用) + PDF.js 上傳 + SaaS 三區介面 + 7-sheet Excel**。

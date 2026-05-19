@@ -21,11 +21,11 @@ export function renderSummaryTab(panel, summary) {
   `).join('');
 
   panel.innerHTML = `
-    <div class="stat-grid">
-      ${StatCard({ label: I18N.stats.totalChanges, value: summary.total_changes ?? 0 })}
-      ${StatCard({ label: I18N.stats.measurement, value: summary.total_measurement_changes ?? 0 })}
-      ${StatCard({ label: I18N.stats.comments, value: summary.total_comment_items ?? 0 })}
-      ${StatCard({ label: I18N.stats.bom, value: summary.total_bom_changes ?? 0 })}
+    <div class="sum-hero">
+      <div class="sum-hero-stat"><div class="sum-hero-num">${summary.total_changes ?? 0}</div><div class="sum-hero-lbl">總變更</div></div>
+      <div class="sum-hero-stat"><div class="sum-hero-num">${summary.total_measurement_changes ?? 0}</div><div class="sum-hero-lbl">尺寸變更</div></div>
+      <div class="sum-hero-stat"><div class="sum-hero-num">${summary.total_comment_items ?? 0}</div><div class="sum-hero-lbl">註解項目</div></div>
+      <div class="sum-hero-stat"><div class="sum-hero-num">${summary.total_bom_changes ?? 0}</div><div class="sum-hero-lbl">BOM 變更</div></div>
     </div>
     <h3 class="section-h">重點摘要</h3>
     <ul class="bullets">${bullets || `<li class="muted">無</li>`}</ul>

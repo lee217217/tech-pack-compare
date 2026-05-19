@@ -13,7 +13,7 @@ import { Toast } from './modules/toast.js';
 import { Api } from './modules/api.js';
 import { escapeHtml, StatCard } from './modules/ui.js';
 import { renderProgress, resetProgress, setAllRunning, setAllFailed, STEP_KEYS } from './modules/progress.js';
-import { mountDropzone, stripForUpload } from './modules/upload.js';
+import { mountDropzone, stripForUpload, prewarmPdfJs, getPdfJsInfo } from './modules/upload.js';
 import { exportEnvelopeToXlsx } from './modules/excel.js';
 import { renderSummaryTab } from './modules/tabs/summary.js';
 import { renderMeasurementTab } from './modules/tabs/measurement.js';
@@ -23,6 +23,22 @@ import { renderQaTab } from './modules/tabs/qa.js';
 import { renderDebugTab } from './modules/tabs/debug.js';
 
 const $ = (id) => document.getElementById(id);
+
+// ─── Activity timeline (in-memory, latest 5) ─────────────
+const _activity = [];
+function pushActivity(text, kind = 'info') {
+  _activity.unshift({ text, kind, at: new Date() });
+  if (_activity.length > 5) _activity.length = 5;
+  renderInspector();
+}
+
+// ─── Breadcrumb labels per step ──────────────────────────
+const BC_LABELS = {
+  1: 'Step 1 · 上傳 PDF',
+  2: 'Step 2 · 比對設定',
+  3: 'Step 3 · 檢視 & 執行',
+  4: 'Step 4 · 結果 & 匯出'
+};
 
 // ─── Wizard step switch ──────────────────────────────────
 function goToStep(step) {
@@ -35,48 +51,172 @@ function goToStep(step) {
   document.querySelectorAll('.step-panel').forEach((el) => {
     el.classList.toggle('hidden', parseInt(el.dataset.step, 10) !== step);
   });
+  const bc = $('bc-step');
+  if (bc) bc.textContent = BC_LABELS[step] || '';
+  if (step === 3) renderReviewSummary();
 }
 
-// ─── Inspector (right pane) ─────────────────────────────
+// ─── Tab indicator slide ─────────────────────────────────
+function moveTabIndicator(name) {
+  const ind = document.querySelector('.tab-indicator');
+  const btn = document.querySelector(`.tab-btn[data-tab="${name}"]`);
+  if (!ind || !btn || btn.classList.contains('hidden')) return;
+  const nav = btn.parentElement;
+  const nb = nav.getBoundingClientRect();
+  const bb = btn.getBoundingClientRect();
+  ind.style.transform = `translateX(${bb.left - nb.left}px)`;
+  ind.style.width = `${bb.width}px`;
+}
+
+// ─── Confetti ────────────────────────────────────────────
+function fireConfetti() {
+  const root = $('confetti-root');
+  if (!root) return;
+  root.innerHTML = '';
+  const colors = ['#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#06b6d4', '#a855f7'];
+  for (let i = 0; i < 36; i++) {
+    const p = document.createElement('span');
+    p.className = 'confetti-piece';
+    p.style.left = (5 + Math.random() * 90) + 'vw';
+    p.style.background = colors[i % colors.length];
+    p.style.animationDelay = (Math.random() * 0.3) + 's';
+    p.style.animationDuration = (1.2 + Math.random() * 0.8) + 's';
+    root.appendChild(p);
+  }
+  setTimeout(() => { root.innerHTML = ''; }, 2200);
+}
+
+// ─── Rotating tips (Step 1) ──────────────────────────────
+const TIPS = [
+  '💡 提示:上傳後會自動偵測尺寸表 / BOM 表頁碼。',
+  '⚡ 提示:Mock 模式可離線跑完整 7-agent workflow。',
+  '🧠 提示:Provider 鎖定 Perplexity Sonar Pro,JSON 結構穩定。',
+  '🔑 提示:Admin License (ADMIN-*) 可解鎖 DEBUG_ALL 模式。',
+  '🖼 提示:系統會挑前 6 張關鍵頁渲為圖像供 LLM 參考。'
+];
+let _tipIdx = 0;
+let _tipTimer = null;
+function startTipsRotator() {
+  const el = document.querySelector('.helper-text');
+  if (!el) return;
+  if (_tipTimer) clearInterval(_tipTimer);
+  _tipTimer = setInterval(() => {
+    _tipIdx = (_tipIdx + 1) % TIPS.length;
+    el.style.opacity = '0';
+    setTimeout(() => { el.textContent = TIPS[_tipIdx]; el.style.opacity = '1'; }, 200);
+  }, 5000);
+}
+
+// ─── Review summary (Step 3) ─────────────────────────────
+function renderReviewSummary() {
+  const el = $('review-summary');
+  if (!el) return;
+  const s = getState();
+  el.innerHTML = `
+    <div class="rev-grid">
+      <div class="rev-row"><span class="rev-k">款式</span><span class="rev-v mono">${escapeHtml(s.styleNumber || '—')}</span></div>
+      <div class="rev-row"><span class="rev-k">品牌</span><span class="rev-v">${escapeHtml(s.brandName || '—')}</span></div>
+      <div class="rev-row"><span class="rev-k">季度</span><span class="rev-v">${escapeHtml(s.season || '—')}</span></div>
+      <div class="rev-row"><span class="rev-k">輸出模式</span><span class="rev-v mono">${escapeHtml(s.outputMode)}</span></div>
+      <div class="rev-row"><span class="rev-k">A (舊版)</span><span class="rev-v">${s.techPackA ? escapeHtml(s.techPackA.fileName) + ` · ${s.techPackA.pageCount}p` : '<em>未上傳</em>'}</span></div>
+      <div class="rev-row"><span class="rev-k">B (新版)</span><span class="rev-v">${s.techPackB ? escapeHtml(s.techPackB.fileName) + ` · ${s.techPackB.pageCount}p` : '<em>未上傳</em>'}</span></div>
+    </div>
+  `;
+}
+
+// ─── Inspector v2 (5 collapse cards) ────────────────────
+const EMPTY_SVG = `<svg class="ins-empty-svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="10" y="14" width="36" height="40" rx="3"/><path d="M18 24h20M18 32h20M18 40h14"/><circle cx="50" cy="50" r="8"/><path d="M50 46v8M46 50h8"/></svg>`;
+
+function fileCardBlock(label, tp) {
+  if (!tp) {
+    return `<div class="ins-file-card ins-file-empty">
+      <span class="ins-file-pill">${escapeHtml(label)}</span>
+      <span class="muted small">尚未上傳</span>
+    </div>`;
+  }
+  return `<div class="ins-file-card">
+    <div class="ins-file-card-head">
+      <span class="ins-file-pill">${escapeHtml(label)}</span>
+      <span class="ins-file-name" title="${escapeHtml(tp.fileName)}">${escapeHtml(tp.fileName)}</span>
+    </div>
+    <div class="ins-file-meta">${tp.pageCount} 頁 · ${(tp.fileSize/1024).toFixed(1)} KB</div>
+    <div class="ins-tags">
+      ${tp.sizeTablePages?.length ? `<span class="chip chip-primary">📐 尺寸 ${tp.sizeTablePages.join(',')}</span>` : ''}
+      ${tp.bomPages?.length ? `<span class="chip chip-success">🧵 BOM ${tp.bomPages.join(',')}</span>` : ''}
+    </div>
+  </div>`;
+}
+
 function renderInspector() {
   const s = getState();
   const el = $('inspector-body');
   if (!el) return;
-  const fileBlock = (label, tp) => tp ? `
-    <div class="ins-file">
-      <div class="ins-file-label">${escapeHtml(label)}</div>
-      <div class="ins-file-name">${escapeHtml(tp.fileName)}</div>
-      <div class="ins-file-meta">${tp.pageCount} 頁 · ${(tp.fileSize/1024).toFixed(1)} KB</div>
-      ${tp.sizeTablePages.length ? `<div class="ins-tag tag-size">尺寸頁 ${tp.sizeTablePages.join(',')}</div>` : ''}
-      ${tp.bomPages.length ? `<div class="ins-tag tag-bom">BOM 頁 ${tp.bomPages.join(',')}</div>` : ''}
-    </div>` : `<div class="ins-file empty">尚未上傳 ${escapeHtml(label)}</div>`;
-
   const meta = s.lastEnvelope?.meta || {};
   const arts = s.lastEnvelope?.data?.artifacts || {};
   const sum = arts.summary || {};
+  const pdfInfo = getPdfJsInfo();
+  const hasAnyFile = !!(s.techPackA || s.techPackB);
+  const hasResult = !!s.lastEnvelope;
+
+  if (!hasAnyFile && !hasResult) {
+    el.innerHTML = `<div class="ins-empty">${EMPTY_SVG}
+      <div class="ins-empty-title">尚未開始</div>
+      <div class="ins-empty-sub">上傳 PDF 後即可看到摘要</div>
+    </div>`;
+    return;
+  }
+
+  const activityList = _activity.length ? _activity.map(a => `
+    <li class="ins-tl-item ins-tl-${a.kind}">
+      <span class="ins-tl-dot"></span>
+      <span class="ins-tl-time mono">${a.at.toLocaleTimeString('zh-HK', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+      <span class="ins-tl-text">${escapeHtml(a.text)}</span>
+    </li>`).join('') : '<li class="muted small">尚無動作</li>';
 
   el.innerHTML = `
-    <div class="ins-section">
-      <div class="ins-section-title">${escapeHtml(I18N.inspector.fileTitle)}</div>
-      ${fileBlock('A · 舊版', s.techPackA)}
-      ${fileBlock('B · 新版', s.techPackB)}
-    </div>
-    <div class="ins-section">
-      <div class="ins-section-title">${escapeHtml(I18N.inspector.metaTitle)}</div>
-      <div class="ins-kv"><span>Provider</span><span class="mono">${escapeHtml(s.health?.provider || meta.provider || '—')}</span></div>
-      <div class="ins-kv"><span>Mode</span><span class="mono">${escapeHtml(s.outputMode)}</span></div>
-      <div class="ins-kv"><span>License</span><span class="mono">${s.licenseKey ? '已設定' : 'OPEN'}</span></div>
-      ${meta.duration_ms != null ? `<div class="ins-kv"><span>耗時</span><span class="mono">${meta.duration_ms} ms</span></div>` : ''}
-      ${meta.total_tokens != null ? `<div class="ins-kv"><span>Tokens</span><span class="mono">${meta.total_tokens}</span></div>` : ''}
-    </div>
-    ${s.lastEnvelope ? `
-      <div class="ins-section">
-        <div class="ins-section-title">${escapeHtml(I18N.inspector.statTitle)}</div>
-        <div class="ins-kv"><span>總變更</span><span class="mono">${sum.total_changes ?? 0}</span></div>
-        <div class="ins-kv"><span>尺寸</span><span class="mono">${sum.total_measurement_changes ?? 0}</span></div>
-        <div class="ins-kv"><span>註解</span><span class="mono">${sum.total_comment_items ?? 0}</span></div>
-        <div class="ins-kv"><span>BOM</span><span class="mono">${sum.total_bom_changes ?? 0}</span></div>
-      </div>` : ''}
+    <details class="ins-card" open>
+      <summary class="ins-card-head"><span class="ins-card-icon">📄</span><span class="ins-card-title">上傳的檔案</span></summary>
+      <div class="ins-card-body">
+        ${fileCardBlock('A · 舊版', s.techPackA)}
+        ${fileCardBlock('B · 新版', s.techPackB)}
+      </div>
+    </details>
+    <details class="ins-card" open>
+      <summary class="ins-card-head"><span class="ins-card-icon">⚙️</span><span class="ins-card-title">執行配置</span></summary>
+      <div class="ins-card-body">
+        <div class="ins-kv"><span>Provider</span><span class="mono">${escapeHtml(s.health?.provider || meta.provider || '—')}</span></div>
+        <div class="ins-kv"><span>Mode</span><span class="mono">${escapeHtml(s.outputMode)}</span></div>
+        <div class="ins-kv"><span>License</span><span class="mono">${s.licenseKey ? (s.isAdmin ? 'ADMIN' : '已設定') : 'OPEN'}</span></div>
+        ${meta.duration_ms != null ? `<div class="ins-kv"><span>耗時</span><span class="mono">${meta.duration_ms} ms</span></div>` : ''}
+        ${meta.total_tokens != null ? `<div class="ins-kv"><span>Tokens</span><span class="mono">${meta.total_tokens}</span></div>` : ''}
+      </div>
+    </details>
+    ${hasResult ? `
+    <details class="ins-card" open>
+      <summary class="ins-card-head"><span class="ins-card-icon">📊</span><span class="ins-card-title">結果統計</span></summary>
+      <div class="ins-card-body">
+        <div class="ins-stat-grid">
+          <div class="ins-stat"><div class="ins-stat-num">${sum.total_changes ?? 0}</div><div class="ins-stat-lbl">總變更</div></div>
+          <div class="ins-stat"><div class="ins-stat-num">${sum.total_measurement_changes ?? 0}</div><div class="ins-stat-lbl">尺寸</div></div>
+          <div class="ins-stat"><div class="ins-stat-num">${sum.total_comment_items ?? 0}</div><div class="ins-stat-lbl">註解</div></div>
+          <div class="ins-stat"><div class="ins-stat-num">${sum.total_bom_changes ?? 0}</div><div class="ins-stat-lbl">BOM</div></div>
+        </div>
+      </div>
+    </details>` : ''}
+    <details class="ins-card">
+      <summary class="ins-card-head"><span class="ins-card-icon">📜</span><span class="ins-card-title">最近動作</span></summary>
+      <div class="ins-card-body">
+        <ul class="ins-tl">${activityList}</ul>
+      </div>
+    </details>
+    <details class="ins-card">
+      <summary class="ins-card-head"><span class="ins-card-icon">🔧</span><span class="ins-card-title">引擎資訊</span></summary>
+      <div class="ins-card-body">
+        <div class="ins-kv"><span>PDF.js</span><span class="mono">${pdfInfo.loaded ? `v${escapeHtml(pdfInfo.version)} (${escapeHtml(pdfInfo.cdn)})` : '未載入'}</span></div>
+        <div class="ins-kv"><span>UI</span><span class="mono">v2.1.1</span></div>
+        <div class="ins-kv"><span>Output</span><span class="mono">${escapeHtml(s.outputMode)}</span></div>
+      </div>
+    </details>
   `;
 }
 
@@ -111,6 +251,7 @@ function renderOutputModes() {
 function activateTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('tab-btn-active', b.dataset.tab === name));
   document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('hidden', p.id !== `tab-panel-${name}`));
+  requestAnimationFrame(() => moveTabIndicator(name));
 }
 
 // ─── Render envelope to all tabs ─────────────────────────
@@ -135,14 +276,18 @@ function renderResult(env) {
   activateTab('summary');
 
   const meta = env.meta || {};
-  $('duration-pill').textContent = `${meta.duration_ms || 0} ms${meta.cached ? ' ' + I18N.msg.cached : ''}`;
+  const durVal = $('duration-val');
+  if (durVal) durVal.textContent = `${meta.duration_ms || 0} ms${meta.cached ? ' · cached' : ''}`;
   $('duration-pill').classList.remove('hidden');
-  $('tokens-pill').textContent = `${meta.total_tokens || 0} tokens`;
+  const tokVal = $('tokens-val');
+  if (tokVal) tokVal.textContent = `${meta.total_tokens || 0}`;
   $('tokens-pill').classList.remove('hidden');
   $('provider-name').textContent = meta.provider || '—';
 
   renderInspector();
   goToStep(4);
+  fireConfetti();
+  pushActivity(`Workflow 完成 · ${meta.duration_ms || 0}ms · ${meta.total_tokens || 0} tokens`, 'success');
 }
 
 function showError(env, http) {
@@ -253,8 +398,20 @@ function init() {
   renderInspector();
 
   // dropzones
-  mountDropzone($('dropzone-a'), { label: 'A', onParsed: (tp) => { setState({ techPackA: tp }); renderInspector(); } });
-  mountDropzone($('dropzone-b'), { label: 'B', onParsed: (tp) => { setState({ techPackB: tp }); renderInspector(); } });
+  mountDropzone($('dropzone-a'), { label: 'A', onParsed: (tp) => {
+    setState({ techPackA: tp });
+    pushActivity(`上傳 A · ${tp.fileName} (${tp.pageCount}p)`, 'info');
+    renderInspector();
+  } });
+  mountDropzone($('dropzone-b'), { label: 'B', onParsed: (tp) => {
+    setState({ techPackB: tp });
+    pushActivity(`上傳 B · ${tp.fileName} (${tp.pageCount}p)`, 'info');
+    renderInspector();
+  } });
+
+  // pre-warm PDF.js (idle callback)
+  try { prewarmPdfJs(); } catch (e) { /* non-fatal */ }
+  startTipsRotator();
 
   // wizard nav
   document.querySelectorAll('[data-goto-step]').forEach((b) => {
@@ -305,6 +462,11 @@ function init() {
   probeLicense();
   fetchHealth();
   goToStep(1);
+  requestAnimationFrame(() => moveTabIndicator('summary'));
+  window.addEventListener('resize', () => {
+    const active = document.querySelector('.tab-btn.tab-btn-active');
+    if (active) moveTabIndicator(active.dataset.tab);
+  });
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
