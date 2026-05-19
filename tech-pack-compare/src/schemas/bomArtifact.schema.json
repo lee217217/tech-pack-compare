@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://techpack-comparator.v2/schemas/bomArtifact.schema.json",
+  "title": "BomArtifact",
+  "description": "由 bomAgent 產出的單一 BOM / Fabric / Trim / Label / Packing 物料變更紀錄。由 summarizerAgent / qaReviewAgent / 前端 BOM Tab / Excel exporter 消費。同一料件多個屬性改變（例如 qty 與 supplier 都改）視為單一 BomArtifact，差異在 notes 補述；同一份 Tech Pack 出現多次同 material_code 但不同 colorway 須拆成多筆。",
+
+  "type": "object",
+  "additionalProperties": false,
+
+  "required": [
+    "bom_item_id",
+    "material_code",
+    "material_type",
+    "description",
+    "old_qty",
+    "new_qty",
+    "diff_qty",
+    "unit",
+    "status",
+    "impact",
+    "severity",
+    "confidence"
+  ],
+
+  "properties": {
+    "bom_item_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Agent 產生的穩定 id（建議 bom_001 / bom_002…），用於 cross-reference 與前端 React-key 替代。"
+    },
+
+    "material_code": {
+      "type": ["string", "null"],
+      "maxLength": 80,
+      "description": "客戶 / 工廠的物料編碼，例如 FAB-CTN-001 / TRM-ZIP-YKK-12。如 Tech Pack 無提供則為 null（agent 不可自行虛構）。"
+    },
+
+    "material_type": {
+      "type": "string",
+      "enum": ["FABRIC", "TRIM", "LABEL", "PACKAGING", "THREAD", "ACCESSORY", "OTHER"],
+      "description": "FABRIC = 布料；TRIM = 配料（拉鏈、釦子、織帶、橡筋）；LABEL = 主嘜 / 洗水嘜 / 吊牌；PACKAGING = 包裝（膠袋、卡通箱、防潮劑）；THREAD = 縫線；ACCESSORY = 其他配飾；OTHER = 無法歸類。"
+    },
+
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "物料描述（保留原文，例如 100% Cotton Jersey 180gsm / YKK 5# Coil Zipper Black）。供應端用此核對。"
+    },
+
+    "color": {
+      "type": ["string", "null"],
+      "maxLength": 100,
+      "description": "顏色或 colorway code，例如 Navy / TCX 19-4023 / Black。無顏色屬性（如膠袋）為 null。"
+    },
+
+    "size_or_spec": {
+      "type": ["string", "null"],
+      "maxLength": 100,
+      "description": "規格 / 尺寸（例如 5# / 18mm / 180gsm / 60s polybag 10x14）。"
+    },
+
+    "supplier": {
+      "type": ["string", "null"],
+      "maxLength": 150,
+      "description": "指定供應商名稱，例如 YKK / Coats / Avery Dennison。無指定為 null。"
+    },
+
+    "old_qty": {
+      "type": ["number", "null"],
+      "description": "Tech Pack A 的用量（每件衣服）。物料新增（A 無）時為 null。"
+    },
+
+    "new_qty": {
+      "type": ["number", "null"],
+      "description": "Tech Pack B 的用量（每件衣服）。物料移除（B 無）時為 null。"
+    },
+
+    "diff_qty": {
+      "type": "number",
+      "description": "new_qty - old_qty。任一為 null 時填 0，並由 status 表達實際狀態。"
+    },
+
+    "unit": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 30,
+      "description": "計量單位（保留原 unit，例如 YD / M / PC / G / KG）。建議在前端展示時統一大寫。"
+    },
+
+    "status": {
+      "type": "string",
+      "enum": ["ADDED", "REMOVED", "CHANGED", "UNCHANGED"],
+      "description": "ADDED = B 有 A 無；REMOVED = A 有 B 無；CHANGED = 兩邊 material_code 對得上但 qty/color/spec/supplier 任一不同；UNCHANGED = 完全相同（agent 通常 filter 掉，保留給 debug）。"
+    },
+
+    "impact": {
+      "type": "string",
+      "enum": ["COST", "LEAD_TIME", "QUALITY", "COMPLIANCE", "NO_IMPACT", "UNKNOWN"],
+      "description": "COST = qty / unit price 物料改變影響成本；LEAD_TIME = supplier / 物料可得性影響交期；QUALITY = fabric / trim spec 改變影響品質；COMPLIANCE = care label / composition / 法規物料改變；NO_IMPACT = 低風險；UNKNOWN = 無法判斷（agent 不確定時用此值，不要硬猜）。"
+    },
+
+    "severity": {
+      "type": "string",
+      "enum": ["INFO", "MINOR", "MAJOR", "CRITICAL"],
+      "description": "CRITICAL = composition / care label / compliance / 主布大改；MAJOR = 主布 / 重要 trim / qty 改；MINOR = packing / accessory 小改；INFO = 一般資料補充。"
+    },
+
+    "related_pom": {
+      "type": ["string", "null"],
+      "maxLength": 100,
+      "description": "若該物料明確關聯某 POM（例如 elastic 影響腰圍），填 POM 名稱；否則 null。"
+    },
+
+    "source_page_old": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 999,
+      "description": "Tech Pack A BOM 來源頁碼。"
+    },
+
+    "source_page_new": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 999,
+      "description": "Tech Pack B BOM 來源頁碼。"
+    },
+
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Agent 對此筆 BOM diff 的可信度。< 0.6 建議由 qaReviewAgent 標記為 needs_review。"
+    },
+
+    "notes": {
+      "type": ["string", "null"],
+      "maxLength": 500,
+      "description": "額外說明（繁中 HK），例如「同時改 supplier 與 qty」、「需向採購確認最低訂量」。無補充為 null。"
+    }
+  }
+}

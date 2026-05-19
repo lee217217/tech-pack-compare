@@ -1,12 +1,22 @@
 {
-  "name": "techpack-compare-skeleton",
-  "version": "1.0.0",
+  "name": "ai-techpack-comparator-v2",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
+  "description": "Multi-agent AI Tech Pack comparator for apparel manufacturing (繁中 HK)",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "netlify dev",
+    "start": "netlify dev",
     "serve": "npx serve public",
-    "start": "netlify dev"
+    "test": "node tests/sample-run.test.js",
+    "lint": "echo 'no linter configured — keep diffs small'"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
   },
   "devDependencies": {
     "netlify-cli": "^17.38.1",

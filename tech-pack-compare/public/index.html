@@ -1,203 +1,159 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
+<!--
+  Path:     public/index.html
+  Purpose:  AI Tech Pack Comparator v2 主頁面 — 4 tab + Excel Export + 7-step 進度條
+  Depends:  public/theme.js, public/app.js, Tailwind CDN, SheetJS CDN
+  Notes:    繁體中文(香港) UI；License Key 由 localStorage 記住；PDF.js Phase 6 上線，
+            目前用 textarea 貼 rawText
+-->
+<!doctype html>
+<html lang="zh-HK">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tech Pack Compare Workspace</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    :root,[data-theme="light"]{--bg:#f5f2ec;--surface:#fffdfa;--surface-2:#f3ede3;--surface-3:#ece4d7;--border:#d9cfbf;--text:#201a15;--muted:#6d645b;--faint:#9e9486;--primary:#0c6c73;--primary-soft:#d6ebed;--primary-strong:#0a565c;--success:#2f7d45;--warning:#9c611b;--danger:#9c3552;--shadow-sm:0 4px 12px rgba(41,33,24,.06);--shadow-md:0 18px 44px rgba(41,33,24,.08);--radius:26px;--radius-sm:18px}
-    [data-theme="dark"]{--bg:#14120f;--surface:#1b1815;--surface-2:#23201b;--surface-3:#2d2923;--border:#403830;--text:#ede4d9;--muted:#b2a79b;--faint:#867a6d;--primary:#68aeb6;--primary-soft:#22383b;--primary-strong:#8ac8cf;--success:#7fc392;--warning:#e0ae6f;--danger:#de7c9d;--shadow-sm:0 4px 14px rgba(0,0,0,.2);--shadow-md:0 22px 52px rgba(0,0,0,.32)}
-    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:'Inter',sans-serif;background:linear-gradient(180deg,var(--bg),var(--surface-2));color:var(--text);min-height:100vh}button,input,textarea,select{font:inherit}
-    .topbar{position:sticky;top:0;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 24px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg) 84%, transparent);backdrop-filter:blur(16px)}
-    .brand{display:flex;align-items:center;gap:14px}.mark{width:46px;height:46px;border-radius:15px;background:var(--text);color:var(--surface);display:grid;place-items:center;font-weight:800}.brand h1{margin:0;font-size:18px}.brand p{margin:4px 0 0;font-size:13px;color:var(--muted)}
-    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.btn,.pill,.theme-btn{padding:10px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text)}.btn,.theme-btn{cursor:pointer;font-weight:700}.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}.btn-secondary{background:var(--surface-2)}.pill{font-size:12px;color:var(--muted)}.theme-btn{display:inline-flex;align-items:center;gap:8px}
-    .page{max-width:1640px;margin:0 auto;padding:24px;display:grid;gap:20px}.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:20px}.card{background:color-mix(in srgb,var(--surface) 95%, transparent);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md)}.panel{padding:24px}
-    .eyebrow{display:inline-flex;padding:8px 12px;border-radius:999px;background:var(--primary-soft);color:var(--primary-strong);font-size:12px;font-weight:800;margin-bottom:16px}h2{margin:0;font-size:clamp(28px,4vw,48px);line-height:1.04;max-width:13ch}.muted{color:var(--muted);line-height:1.7}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}
-    .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.stat{padding:18px;border:1px solid var(--border);border-radius:20px;background:var(--surface);box-shadow:var(--shadow-sm)}.stat span{display:block;color:var(--muted);font-size:13px;margin-bottom:8px;font-weight:700}.stat strong{font-size:28px}
-    .workspace{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:20px;align-items:start}.side-stack{display:grid;gap:20px;position:sticky;top:92px;max-height:calc(100vh - 110px);overflow:auto;padding-right:2px}
-    .section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}.section-head h3{margin:0;font-size:20px}.section-head p{margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.6}
-    .drop-grid{display:grid;gap:14px}.drop{position:relative;min-height:168px;border:1.5px dashed color-mix(in srgb,var(--primary) 28%, var(--border));border-radius:22px;padding:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));display:flex;flex-direction:column;justify-content:space-between;gap:12px}.drop.dragover{border-color:var(--primary)}.drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
-    .file-chip{display:inline-flex;padding:8px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:12px;font-weight:700;width:max-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.meta{display:grid;gap:8px;font-size:13px;color:var(--muted)}
-    textarea,select{width:100%;border-radius:18px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);padding:14px 16px}.field{display:grid;gap:8px}.field label{font-size:13px;font-weight:700;color:var(--muted)} textarea{min-height:140px;resize:vertical;line-height:1.7}
-    .result-shell{padding:0;overflow:hidden;min-width:0}.result-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:22px 24px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 88%, transparent),color-mix(in srgb,var(--surface-2) 70%, transparent))}.result-top h3{margin:0;font-size:22px}.result-top p{margin:8px 0 0;color:var(--muted);font-size:14px;line-height:1.6}.result-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .result-body{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:860px}.main-result{padding:24px;overflow:auto;background:var(--surface);min-width:0}.result-panel{padding:24px;border-left:1px solid var(--border);background:var(--surface-2);display:grid;align-content:start;gap:18px}
-    .subpanel{padding:16px;border:1px solid var(--border);border-radius:20px;background:var(--surface);box-shadow:var(--shadow-sm)}.subpanel h4{margin:0 0 10px;font-size:14px}.subpanel p{margin:0;color:var(--muted);font-size:13px;line-height:1.7}
-    .thumb-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.thumb{display:grid;gap:8px}.thumb img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:16px;border:1px solid var(--border);background:var(--surface-2)}.thumb small{color:var(--muted)}
-    .report-card{display:grid;gap:16px}.report-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.report-header h2{font-size:28px;max-width:none}.report-subtitle{margin:8px 0 0;color:var(--muted);line-height:1.7}
-    .report-block{padding:16px;border:1px solid var(--border);border-radius:20px;background:var(--surface-2)}.report-block h3{margin:0 0 12px;font-size:17px}.report-block p{margin:0;color:var(--muted);line-height:1.75}.report-block ul{margin:0 0 0 18px;padding:0;color:var(--muted);line-height:1.8}
-    .inline-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.muted-label{font-size:12px;font-weight:800;color:var(--muted);margin-bottom:6px}
-    .diff-list{display:grid;gap:12px}.diff-card{padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:var(--surface)}.diff-top{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.diff-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .badge{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:800}.badge-high{background:rgba(156,53,82,.12);color:var(--danger)}.badge-medium{background:rgba(156,97,27,.12);color:var(--warning)}.badge-low{background:rgba(47,125,69,.12);color:var(--success)}
-    .footer{font-size:12px;color:var(--muted);text-align:right}
-    @media print {.topbar,.side-stack,.result-panel,.result-actions,.footer{display:none!important}.page,.workspace,.result-body{display:block}.main-result{padding:0;background:#fff}.report-block,.diff-card,.subpanel{box-shadow:none!important;border-color:#ccc!important}body{background:#fff;color:#000}}
-    @media (max-width:1320px){.workspace{grid-template-columns:minmax(320px,380px) minmax(0,1fr)}.result-body{grid-template-columns:minmax(0,1fr) 300px}}
-    @media (max-width:1100px){.hero,.workspace,.result-body{grid-template-columns:1fr}.side-stack{position:static;max-height:none;overflow:visible}.result-panel{border-left:none;border-top:1px solid var(--border)}}
-    @media (max-width:760px){.page,.topbar{padding-left:16px;padding-right:16px}.topbar{align-items:flex-start;flex-direction:column}.panel,.main-result,.result-panel{padding:18px}.result-top{padding:18px}.stats,.thumb-grid,.inline-columns,.diff-grid{grid-template-columns:1fr}}
-  </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AI Tech Pack Comparator v2</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+  <script>
+    // Tailwind 主題 — 預設 dark / light 切換靠 html.classList
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 500: '#2563eb', 600: '#1d4ed8', 700: '#1e3a8a' }
+          }
+        }
+      }
+    };
+  </script>
 </head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="mark">TP</div>
-      <div>
-        <h1>Tech Pack Compare</h1>
-        <p>For Sales and Merchandising follow-up</p>
-      </div>
-    </div>
-    <div class="toolbar">
-      <span class="pill">Measurement compare</span>
-      <span class="pill">Multi-page image review</span>
-      <button class="theme-btn" id="themeToggle" aria-label="切換深色模式"><span id="themeIcon">🌙</span><span id="themeText">Dark</span></button>
-      <button class="btn btn-primary" id="compareBtn">Generate Final Report</button>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen">
+
+  <!-- ── Top bar ─────────────────────────────────────────── -->
+  <header class="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-4">
+      <h1 class="text-lg sm:text-xl font-semibold tracking-tight">
+        AI Tech Pack Comparator <span class="text-xs font-mono text-slate-500 align-top">v2.0.0</span>
+      </h1>
+      <div class="flex-1"></div>
+      <span id="provider-pill"
+        class="hidden sm:inline-flex items-center gap-1 text-xs font-mono px-2 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+        provider: <span id="provider-name">—</span>
+      </span>
+      <button id="theme-toggle"
+        class="rounded-md p-2 hover:bg-slate-200 dark:hover:bg-slate-800 transition"
+        title="切換主題" aria-label="切換主題">
+        <span class="block dark:hidden">🌙</span>
+        <span class="hidden dark:block">☀️</span>
+      </button>
     </div>
   </header>
 
-  <main class="page">
-    <section class="hero">
-      <div class="card panel">
-        <div class="eyebrow">Tech pack review</div>
-        <h2>Compare two tech packs and generate a clear summary for follow-up.</h2>
-        <p class="muted">Upload two PDF versions, add buyer comments if needed, and generate a final report covering measurement changes, key text updates, image comments, and follow-up actions.</p>
-        <div class="hero-actions">
-          <button class="btn btn-primary" id="compareBtn2">Generate Final Report</button>
-          <button class="btn btn-secondary" id="visionBtn">Run Image Review Only</button>
-          <button class="btn" id="copySummaryBtn">Copy Summary</button>
-          <button class="btn" id="exportReportBtn">Export / Print</button>
+  <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- ── License + Input panel ─────────────────────────── -->
+    <section class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4">
+      <div class="flex flex-col sm:flex-row gap-3 sm:items-end">
+        <div class="flex-1">
+          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1" for="license-key">
+            License Key
+          </label>
+          <input id="license-key" type="text" autocomplete="off" spellcheck="false"
+            class="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            placeholder="輸入您的 License Key (例: USER-DEMO-001)" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1" for="style-number">
+            款式編號 (StyleNumber)
+          </label>
+          <input id="style-number" type="text" value="STYLE-DEMO-001"
+            class="w-full sm:w-56 px-3 py-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
       </div>
 
-      <div class="card panel">
-        <div class="section-head">
-          <div>
-            <h3>Workspace stats</h3>
-            <p>Quick indicators for uploaded files, total pages, and current preview pages.</p>
-          </div>
+      <fieldset class="space-y-2">
+        <legend class="text-xs font-medium text-slate-500 dark:text-slate-400">輸出模式 (Output Mode)</legend>
+        <div id="output-mode-group" class="flex flex-wrap gap-2 text-sm">
+          <!-- radio buttons rendered by app.js -->
         </div>
-        <div class="stats">
-          <div class="stat"><span>Files loaded</span><strong id="statFiles">0</strong></div>
-          <div class="stat"><span>Total pages</span><strong id="statPages">0</strong></div>
-          <div class="stat"><span>Preview page A</span><strong id="statPreviewA">-</strong></div>
-          <div class="stat"><span>Preview page B</span><strong id="statPreviewB">-</strong></div>
+      </fieldset>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1" for="old-text">
+            舊版 Tech Pack 文字內容 (從 PDF 複製貼上)
+          </label>
+          <textarea id="old-text" rows="10" spellcheck="false"
+            class="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+            placeholder="貼上舊版 Tech Pack 的純文字內容…"></textarea>
         </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1" for="new-text">
+            新版 Tech Pack 文字內容 (從 PDF 複製貼上)
+          </label>
+          <textarea id="new-text" rows="10" spellcheck="false"
+            class="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+            placeholder="貼上新版 Tech Pack 的純文字內容…"></textarea>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 pt-2">
+        <button id="run-btn"
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition">
+          <span>▶ 開始比對</span>
+        </button>
+        <button id="export-btn" disabled
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition">
+          <span>⬇ 匯出 Excel</span>
+        </button>
+        <span id="status-msg" class="text-xs text-slate-500 dark:text-slate-400"></span>
+        <div class="flex-1"></div>
+        <span id="duration-pill" class="hidden text-xs font-mono px-2 py-1 rounded bg-slate-200 dark:bg-slate-800"></span>
+        <span id="tokens-pill" class="hidden text-xs font-mono px-2 py-1 rounded bg-slate-200 dark:bg-slate-800"></span>
       </div>
     </section>
 
-    <section class="workspace">
-      <aside class="side-stack">
-        <div class="card panel">
-          <div class="section-head">
-            <div>
-              <h3>Upload PDFs</h3>
-              <p>Upload Tech Pack A and B. The system will prepare the compare flow automatically.</p>
-            </div>
-          </div>
-          <div class="drop-grid">
-            <label class="drop" id="dropA">
-              <input id="fileA" type="file" accept="application/pdf" />
-              <div>
-                <div class="file-chip">Tech Pack A</div>
-                <p class="muted">Click or drag PDF here</p>
-              </div>
-              <div class="meta">
-                <strong id="fileAName">No file selected</strong>
-                <span id="fileAMeta">Pages: - · Characters: -</span>
-              </div>
-            </label>
-            <label class="drop" id="dropB">
-              <input id="fileB" type="file" accept="application/pdf" />
-              <div>
-                <div class="file-chip">Tech Pack B</div>
-                <p class="muted">Click or drag PDF here</p>
-              </div>
-              <div class="meta">
-                <strong id="fileBName">No file selected</strong>
-                <span id="fileBMeta">Pages: - · Characters: -</span>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <div class="card panel">
-          <div class="section-head">
-            <div>
-              <h3>Buyer comments</h3>
-              <p>Add comments, remarks, or special buyer instructions before generating the report.</p>
-            </div>
-          </div>
-          <div class="field">
-            <label for="commentsInput">Comments / remarks / notes</label>
-            <textarea id="commentsInput" placeholder="e.g. update care label placement, buyer marked artwork on image, revise chest measurement"></textarea>
-          </div>
-        </div>
-
-        <div class="card panel">
-          <div class="section-head">
-            <div>
-              <h3>Manual preview</h3>
-              <p>Use this to inspect pages manually. Final compare will still use the system-selected logic in the background.</p>
-            </div>
-          </div>
-          <div class="field">
-            <label for="visionPageA">Preview page A</label>
-            <select id="visionPageA"></select>
-          </div>
-          <div class="field">
-            <label for="visionPageB">Preview page B</label>
-            <select id="visionPageB"></select>
-          </div>
-        </div>
-      </aside>
-
-      <section class="card result-shell">
-        <div class="result-top">
-          <div>
-            <h3>Final report</h3>
-            <p id="actionStatus">Upload both PDFs to begin</p>
-          </div>
-          <div class="result-actions">
-            <button class="btn" onclick="document.getElementById('copySummaryBtn').click()">Copy Summary</button>
-            <button class="btn" onclick="document.getElementById('exportReportBtn').click()">Export / Print</button>
-          </div>
-        </div>
-
-        <div class="result-body">
-          <div class="main-result" id="finalReportOut">
-            <div class="report-block">
-              <h3>Waiting for report</h3>
-              <p>After you upload both PDFs and click <strong>Generate Final Report</strong>, the report will appear here.</p>
-            </div>
-          </div>
-
-          <aside class="result-panel">
-            <div class="subpanel">
-              <h4>Preview images</h4>
-              <p>Preview pages update automatically when image review starts. You can also inspect pages manually using the selectors.</p>
-            </div>
-            <div class="thumb-grid">
-              <div class="thumb">
-                <img id="previewImgA" alt="Preview A" />
-                <small id="previewMetaA">Page -</small>
-              </div>
-              <div class="thumb">
-                <img id="previewImgB" alt="Preview B" />
-                <small id="previewMetaB">Page -</small>
-              </div>
-            </div>
-            <div class="subpanel">
-              <h4>Report focus</h4>
-              <p>This report is designed for Sales and Merchandising teams to review revision impact faster and prepare follow-up actions.</p>
-            </div>
-          </aside>
-        </div>
-      </section>
+    <!-- ── Progress bar (7-step agent pipeline) ──────────── -->
+    <section id="progress-section" class="hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+      <h2 class="text-sm font-semibold mb-3">處理進度</h2>
+      <ol id="progress-list" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-xs">
+        <!-- step chips rendered by app.js -->
+      </ol>
     </section>
 
-    <div class="footer">Tech Pack Compare Workspace</div>
+    <!-- ── Tabs ─────────────────────────────────────────── -->
+    <section id="result-section" class="hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+      <nav class="flex flex-wrap border-b border-slate-200 dark:border-slate-800 text-sm">
+        <button data-tab="summary"      class="tab-btn px-4 py-3 border-b-2 border-brand-500 font-medium">總結</button>
+        <button data-tab="measurement"  class="tab-btn px-4 py-3 border-b-2 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800">尺寸變更</button>
+        <button data-tab="comments"     class="tab-btn px-4 py-3 border-b-2 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800">註解 &amp; 圖像</button>
+        <button data-tab="bom"          class="tab-btn px-4 py-3 border-b-2 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800">物料清單 (BOM)</button>
+        <button data-tab="qa"           class="tab-btn px-4 py-3 border-b-2 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800">QA Review</button>
+        <button data-tab="debug"        class="tab-btn px-4 py-3 border-b-2 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800 hidden" id="tab-debug">Debug</button>
+      </nav>
+      <div class="p-5">
+        <div id="tab-panel-summary"     class="tab-panel"></div>
+        <div id="tab-panel-measurement" class="tab-panel hidden"></div>
+        <div id="tab-panel-comments"    class="tab-panel hidden"></div>
+        <div id="tab-panel-bom"         class="tab-panel hidden"></div>
+        <div id="tab-panel-qa"          class="tab-panel hidden"></div>
+        <div id="tab-panel-debug"       class="tab-panel hidden"></div>
+      </div>
+    </section>
+
+    <!-- ── Error panel ──────────────────────────────────── -->
+    <section id="error-section" class="hidden rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-5">
+      <h2 class="text-sm font-semibold text-red-700 dark:text-red-300 mb-2">執行失敗</h2>
+      <pre id="error-body" class="text-xs font-mono whitespace-pre-wrap text-red-700 dark:text-red-300"></pre>
+    </section>
+
+    <footer class="text-xs text-slate-500 dark:text-slate-500 pt-4 text-center">
+      Provider 鎖定 Perplexity Sonar Pro · UI 繁中(HK) · v2.0.0 · KI-006 ✅ · KI-008 (鎖定設計決定)
+    </footer>
   </main>
 
+  <script type="module" src="./theme.js"></script>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

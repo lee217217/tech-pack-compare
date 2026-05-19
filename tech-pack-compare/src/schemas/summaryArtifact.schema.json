@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://techpack-comparator.v2/schemas/summaryArtifact.schema.json",
+  "title": "SummaryArtifact",
+  "description": "由 summarizerAgent 整合 measurement / comment / image 三類 artifact 後產出的最終 point-form 報告。由前端 Summary Tab、Copy 按鈕、Export to Excel 按鈕、follow-up 郵件 draft 共同消費。所有字串輸出語言：繁體中文（香港）。",
+
+  "type": "object",
+  "additionalProperties": false,
+
+  "required": [
+    "total_changes",
+    "total_measurement_changes",
+    "total_comment_items",
+    "total_image_changes",
+    "total_bom_changes",
+    "bullet_points",
+    "generated_at"
+  ],
+
+  "properties": {
+    "total_changes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9999,
+      "description": "三類 artifact 總和（measurement + comment + image）。"
+    },
+
+    "total_measurement_changes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9999,
+      "description": "MeasurementChange 筆數（包含同一 POM 跨多 size 拆出的多筆）。"
+    },
+
+    "total_comment_items": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9999,
+      "description": "CommentArtifact 筆數。"
+    },
+
+    "total_image_changes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9999,
+      "description": "ImageArtifact 筆數。"
+    },
+
+    "total_bom_changes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9999,
+      "description": "BomArtifact 筆數（包含 ADDED / REMOVED / CHANGED，UNCHANGED 一般已被 bomAgent 過濾）。"
+    },
+
+    "cost_risk_items": {
+      "type": "array",
+      "maxItems": 20,
+      "description": "從 measurement / bom artifacts 抽取出的成本風險清單（繁中 HK 一行一句），例如「主布用量由 1.2 YD 加至 1.35 YD，預估 +12% 物料成本」。",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+
+    "production_risk_items": {
+      "type": "array",
+      "maxItems": 20,
+      "description": "從 measurement / bom / comment artifacts 抽取出的生產風險清單（繁中 HK），例如「YKK 拉鏈換新供應商，需重新確認交期」。",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+
+    "bullet_points": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 20,
+      "description": "整份報告的 point-form 重點，每點一句繁中（HK），可直接 Copy 給客戶。",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+
+    "decisions": {
+      "type": "array",
+      "maxItems": 10,
+      "description": "Agent 建議 Sales / Merchandiser 立即拍板的決策項。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "detail"],
+        "properties": {
+          "title":   { "type": "string", "minLength": 1, "maxLength": 100, "description": "決策名稱（簡短）。" },
+          "detail":  { "type": "string", "minLength": 1, "maxLength": 300, "description": "建議內容（繁中）。" },
+          "impacted_poms": {
+            "type": "array",
+            "maxItems": 30,
+            "description": "受影響的 POM 名稱列表，方便回查 measurement table。",
+            "items": { "type": "string", "maxLength": 100 }
+          }
+        }
+      }
+    },
+
+    "action_items": {
+      "type": "array",
+      "maxItems": 10,
+      "description": "後續跟進事項（todo list 形式）。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "priority"],
+        "properties": {
+          "title":    { "type": "string", "minLength": 1, "maxLength": 100, "description": "事項描述（繁中）。" },
+          "owner":    { "type": ["string", "null"], "maxLength": 100, "description": "建議負責人，例如 Sales / Tech / QA。LLM 不確定時填 null。" },
+          "due_date": {
+            "type": ["string", "null"],
+            "maxLength": 30,
+            "description": "ISO 8601 日期（YYYY-MM-DD）。Agent 若無依據不應自行猜日期，填 null。"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["LOW", "MEDIUM", "HIGH"],
+            "description": "優先級。"
+          }
+        }
+      }
+    },
+
+    "follow_up_email": {
+      "type": ["string", "null"],
+      "maxLength": 3000,
+      "description": "Sales 可直接複製寄出的 follow-up 郵件草稿（繁中 HK）。若無重大差異可為 null。"
+    },
+
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40,
+      "description": "ISO 8601 時間戳記（UTC）。"
+    }
+  }
+}

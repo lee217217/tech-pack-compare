@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://techpack-comparator.v2/schemas/workflowResult.schema.json",
+  "title": "WorkflowResult",
+  "description": "整個 /run-workflow endpoint 的統一回應 envelope。由 coordinatorAgent 組裝，由前端 app.js 解析。任何 Netlify Function 對外輸出都應符合此 envelope（即使 error case，也要回傳 success=false 的同形體）。引用所有其他 schema。",
+
+  "type": "object",
+  "additionalProperties": false,
+
+  "required": ["success", "data", "error", "meta"],
+
+  "properties": {
+    "success": {
+      "type": "boolean",
+      "description": "整個 workflow 是否成功（partial fallback 仍算 success=true，會以 data.workflow_log + qa_review 反映）。只有整體 crash / auth fail / rate limit 才 success=false。"
+    },
+
+    "data": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "description": "成功 case 的主資料負載。失敗時為 null。",
+      "required": ["request_id", "output_mode", "artifacts", "workflow_log", "agentStatus"],
+
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "本次請求的唯一 id（由 makeRequestId() 產生）。前端 / log / support ticket 都用這個串連。"
+        },
+
+        "output_mode": {
+          "type": "string",
+          "enum": ["FULL", "SUMMARY", "MEASUREMENT_ONLY", "BOM_ONLY", "DEBUG_ALL"],
+          "description": "本次跑的模式。FULL=全套 agent；SUMMARY=只 extractor+summarizer+qa；MEASUREMENT_ONLY=只 extractor+measurement+summarizer+qa；BOM_ONLY=只 extractor+bom+summarizer+qa；DEBUG_ALL=等同 FULL 但 meta.debug 拽出原始資料（需 context.debugAllowed=true，否則自動降級 FULL）。"
+        },
+
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["measurement_changes", "comments", "images", "bom_changes", "summary", "qa_review"],
+          "description": "六類 artifact 集合。skipped 的 agent 對應欄位為空陣列或 null。個別欄位詳見下文。",
+          "$comment": "agentStatus + warnings 在 data.agentStatus / data.warnings；debug raw 在 meta.debug。",
+
+          "properties": {
+            "measurement_changes": {
+              "type": "array",
+              "maxItems": 1000,
+              "description": "所有 measurement 差異（按 POM × size 拆分）。",
+              "items": { "$ref": "https://techpack-comparator.v2/schemas/measurementChange.schema.json" }
+            },
+
+            "comments": {
+              "type": "array",
+              "maxItems": 200,
+              "description": "所有 comment artifact。",
+              "items": { "$ref": "https://techpack-comparator.v2/schemas/commentArtifact.schema.json" }
+            },
+
+            "images": {
+              "type": "array",
+              "maxItems": 100,
+              "description": "所有 image artifact。",
+              "items": { "$ref": "https://techpack-comparator.v2/schemas/imageArtifact.schema.json" }
+            },
+
+            "bom_changes": {
+              "type": "array",
+              "maxItems": 1000,
+              "description": "所有 BOM / material 差異（fabric / trim / label / packaging / thread / accessory）。",
+              "items": { "$ref": "https://techpack-comparator.v2/schemas/bomArtifact.schema.json" }
+            },
+
+            "summary": {
+              "anyOf": [
+                { "$ref": "https://techpack-comparator.v2/schemas/summaryArtifact.schema.json" },
+                { "type": "null" }
+              ],
+              "description": "summarizerAgent 產出；output_mode=MEASUREMENT_ONLY 仍會產出（針對 measurement 的精簡 summary）。"
+            },
+
+            "qa_review": {
+              "anyOf": [
+                { "$ref": "https://techpack-comparator.v2/schemas/qaReview.schema.json" },
+                { "type": "null" }
+              ],
+              "description": "qaReviewAgent 產出。當 ENABLE_QA_REVIEW=false 時為 null。"
+            }
+          }
+        },
+
+        "agentStatus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["extractor", "measurement", "comment", "image", "bom", "summarizer", "qaReview"],
+          "description": "每個 agent 的 final status（與 workflow_log 同步），供前端進度條 / status chips 使用。",
+          "properties": {
+            "extractor":   { "type": "string", "enum": ["PENDING", "RUNNING", "DONE", "ERROR", "SKIPPED"] },
+            "measurement": { "type": "string", "enum": ["PENDING", "RUNNING", "DONE", "ERROR", "SKIPPED"] },
+            "comment":     { "type": "string", "enum": ["PENDING", "RUNNING", "DONE", "ERROR", "SKIPPED"] },
+            "image":       { "type": "string", "enum": ["PENDING", "RUNNING", "DONE", "ERROR", "SKIPPED"] },
+            "bom":         { "type": "string", "enum": ["PENDING", "RUNNING", "DONE", "ERROR", "SKIPPED"] },
+            "summarizer":  { "type": "string", "enum": ["PENDING", "RUNNING", "DONE", "ERROR", "SKIPPED"] },
+            "qaReview":    { "type": "string", "enum": ["PENDING", "RUNNING", "DONE", "ERROR", "SKIPPED"] }
+          }
+        },
+
+        "workflow_log": {
+          "type": "array",
+          "maxItems": 50,
+          "description": "每個 agent 的執行紀錄，供前端進度條與 debug。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["agent", "status", "started_at"],
+            "properties": {
+              "agent": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 50,
+                "description": "Agent 名稱（小駝峰），例如 extractorAgent。"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["PENDING", "RUNNING", "DONE", "ERROR", "SKIPPED"],
+                "description": "agent 結束時的最終狀態。"
+              },
+              "started_at": {
+                "type": "string",
+                "format": "date-time",
+                "maxLength": 40,
+                "description": "開始 ISO 8601。"
+              },
+              "ended_at": {
+                "type": ["string", "null"],
+                "format": "date-time",
+                "maxLength": 40,
+                "description": "結束 ISO 8601；仍在 RUNNING 則為 null。"
+              },
+              "duration_ms": {
+                "type": ["integer", "null"],
+                "minimum": 0,
+                "maximum": 600000,
+                "description": "毫秒。"
+              },
+              "tokens_used": {
+                "type": ["integer", "null"],
+                "minimum": 0,
+                "maximum": 1000000,
+                "description": "本 agent 消耗的 total tokens（prompt + completion）。mock provider 為 0。"
+              },
+              "error_message": {
+                "type": ["string", "null"],
+                "maxLength": 1000,
+                "description": "若 status=ERROR，記錄錯誤訊息（繁中或原始錯誤皆可）。"
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "error": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50,
+              "description": "錯誤代碼，全大寫 snake_case，例如 RATE_LIMITED / INVALID_LICENSE / FILE_TOO_LARGE / WORKFLOW_CRASHED。"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "description": "給 user 看的繁中錯誤訊息（從 i18n.js 取）。"
+            },
+            "detail": {
+              "type": ["object", "null"],
+              "description": "額外 debug 資料，前端可選擇是否顯示。可包含 stack trace 摘要、resetAt 時間等。"
+            }
+          }
+        },
+        { "type": "null" }
+      ],
+      "description": "成功時為 null；失敗時必填 code + message。"
+    },
+
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "duration_ms", "total_tokens", "provider", "cached", "warnings"],
+      "description": "後設資訊（observability + billing）。",
+      "properties": {
+        "version": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "API 版本，例如 v2.0.0。"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000,
+          "description": "整個 request 從 enter 到 return 的毫秒數。"
+        },
+        "total_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000,
+          "description": "所有 agent 累加的 token 用量。"
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30,
+          "description": "本次用的 LLM provider，例如 perplexity / openai / mock。"
+        },
+        "cached": {
+          "type": "boolean",
+          "description": "是否命中 cacheService（input hash 相同並有效）。"
+        },
+        "warnings": {
+          "type": "array",
+          "maxItems": 100,
+          "description": "汇總所有 agent 的 non-fatal warning 訊息（partial fallback、 outputMode 降級、高幻覺風險等）。",
+          "items": { "type": "string", "maxLength": 500 }
+        },
+        "debug": {
+          "type": ["object", "null"],
+          "description": "只在 output_mode=DEBUG_ALL 且 context.debugAllowed=true 才有值。包含 agent raw meta、cache stats、provider health、workflow timings等。同時這是唯一允許輸出 raw_text 的地方。"
+        }
+      }
+    }
+  }
+}

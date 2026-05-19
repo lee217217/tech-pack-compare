@@ -1,969 +1,642 @@
-import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.min.mjs';
+/*
+  Path:     public/app.js
+  Purpose:  前端主邏輯 — 4 tab + 7-step 進度條 + License header + Excel export
+  Depends:  public/index.html, public/theme.js, public/style.css, SheetJS (CDN)
+  Notes:    所有文字繁中(HK)；License Key 用 localStorage 記住；
+            PDF.js Phase 6 上線，現用 textarea 貼純文字
+            envelope shape:
+              { success, data: { request_id, output_mode, artifacts: { measurement_changes,
+                comments, images, bom_changes, summary, qa_review }, agentStatus, workflow_log },
+                error, meta: { version, duration_ms, total_tokens, provider, cached, warnings, debug }}
+*/
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.worker.min.mjs';
-
-const compareBtn = document.getElementById('compareBtn');
-const compareBtn2 = document.getElementById('compareBtn2');
-const visionBtn = document.getElementById('visionBtn');
-const copySummaryBtn = document.getElementById('copySummaryBtn');
-const exportReportBtn = document.getElementById('exportReportBtn');
-const actionStatus = document.getElementById('actionStatus');
-const fileAInput = document.getElementById('fileA');
-const fileBInput = document.getElementById('fileB');
-const fileAName = document.getElementById('fileAName');
-const fileBName = document.getElementById('fileBName');
-const fileAMeta = document.getElementById('fileAMeta');
-const fileBMeta = document.getElementById('fileBMeta');
-const commentsInput = document.getElementById('commentsInput');
-const finalReportOut = document.getElementById('finalReportOut');
-const statFiles = document.getElementById('statFiles');
-const statPages = document.getElementById('statPages');
-const statPreviewA = document.getElementById('statPreviewA');
-const statPreviewB = document.getElementById('statPreviewB');
-const previewImgA = document.getElementById('previewImgA');
-const previewImgB = document.getElementById('previewImgB');
-const previewMetaA = document.getElementById('previewMetaA');
-const previewMetaB = document.getElementById('previewMetaB');
-const textASelect = document.getElementById('visionPageA');
-const textBSelect = document.getElementById('visionPageB');
-const themeToggle = document.getElementById('themeToggle');
-const themeIcon = document.getElementById('themeIcon');
-const themeText = document.getElementById('themeText');
-
-const state = {
-  A: { name: null, pages: 0, text: '', pdf: null, preview: null, pageTextMap: [], pageScores: [], autoTextPages: [], autoImagePages: [], autoMeasurementPages: [] },
-  B: { name: null, pages: 0, text: '', pdf: null, preview: null, pageTextMap: [], pageScores: [], autoTextPages: [], autoImagePages: [], autoMeasurementPages: [] },
-  customerProfile: 'hybrid',
-  latestSummaryText: '',
-  latestReportHtml: ''
+// ── i18n: 簡化版字典（browser-side） ─────────────────────────
+const I18N = {
+  outputModes: {
+    FULL:             '完整 (FULL)',
+    SUMMARY:          '只看總結 (SUMMARY)',
+    MEASUREMENT_ONLY: '只看尺寸 (MEASUREMENT_ONLY)',
+    BOM_ONLY:         '只看 BOM (BOM_ONLY)',
+    DEBUG_ALL:        'Debug 模式 (DEBUG_ALL · admin)'
+  },
+  agentLabels: {
+    extractor:   '1. 解析',
+    measurement: '2. 尺寸',
+    comment:     '3. 註解',
+    image:       '4. 圖像',
+    bom:         '5. BOM',
+    summarizer:  '6. 總結',
+    qaReview:    '7. QA'
+  },
+  agentStatus: {
+    PENDING: '等待中',
+    RUNNING: '處理中',
+    DONE:    '完成',
+    SKIPPED: '略過',
+    FAILED:  '失敗'
+  },
+  severity: {
+    CRITICAL: '嚴重', MAJOR: '重要', MINOR: '輕微', INFO: '資訊',
+    HIGH: '高', MEDIUM: '中', LOW: '低',
+    ADDED: '新增', REMOVED: '移除', CHANGED: '變更', UNCHANGED: '不變',
+    PASS: '通過', WARN: '警告', FAIL: '不通過'
+  },
+  msg: {
+    licenseRequired: '請先輸入 License Key。',
+    missingText:     '請貼上舊版與新版 Tech Pack 文字內容。',
+    running:         '正在處理…',
+    done:            '完成',
+    failed:          '執行失敗',
+    noData:          '此模式下無資料。',
+    cached:          '(由快取回應)'
+  }
 };
 
-(function initTheme() {
-  if (!themeToggle || !themeIcon || !themeText) return;
-  const root = document.documentElement;
-  let theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  const applyTheme = (mode) => {
-    theme = mode;
-    root.setAttribute('data-theme', mode);
-    const isDark = mode === 'dark';
-    themeIcon.textContent = isDark ? '☀️' : '🌙';
-    themeText.textContent = isDark ? 'Light' : 'Dark';
-    themeToggle.setAttribute('aria-label', isDark ? '切換淺色模式' : '切換深色模式');
-  };
-  applyTheme(theme);
-  themeToggle.addEventListener('click', () => applyTheme(theme === 'dark' ? 'light' : 'dark'));
-})();
+// ── DOM refs ─────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const els = {
+  licenseKey:   $('license-key'),
+  styleNumber:  $('style-number'),
+  oldText:      $('old-text'),
+  newText:      $('new-text'),
+  outputGroup:  $('output-mode-group'),
+  runBtn:       $('run-btn'),
+  exportBtn:    $('export-btn'),
+  statusMsg:    $('status-msg'),
+  durationPill: $('duration-pill'),
+  tokensPill:   $('tokens-pill'),
+  providerName: $('provider-name'),
+  progressSec:  $('progress-section'),
+  progressList: $('progress-list'),
+  resultSec:    $('result-section'),
+  errorSec:     $('error-section'),
+  errorBody:    $('error-body'),
+  tabDebug:     $('tab-debug')
+};
 
-function setActionStatus(text) {
-  if (actionStatus) actionStatus.textContent = text;
+const STATE = {
+  lastEnvelope: null,  // 最近一次 /run-workflow 成功 envelope
+  styleNumber:  'STYLE-DEMO-001',
+  outputMode:   'FULL',
+  isAdmin:      false
+};
+
+// ── License + style number persistence ───────────────────
+const LS_LICENSE = 'tpc.license';
+const LS_STYLE   = 'tpc.style';
+const LS_MODE    = 'tpc.outputMode';
+
+function loadPrefs() {
+  const lic   = localStorage.getItem(LS_LICENSE) || '';
+  const style = localStorage.getItem(LS_STYLE)   || 'STYLE-DEMO-001';
+  const mode  = localStorage.getItem(LS_MODE)    || 'FULL';
+  els.licenseKey.value  = lic;
+  els.styleNumber.value = style;
+  STATE.styleNumber = style;
+  STATE.outputMode  = mode;
 }
 
-function updateStats() {
-  if (statFiles) statFiles.textContent = [state.A.name, state.B.name].filter(Boolean).length;
-  if (statPages) statPages.textContent = state.A.pages + state.B.pages;
-  if (statPreviewA) statPreviewA.textContent = state.A.preview?.page || '-';
-  if (statPreviewB) statPreviewB.textContent = state.B.preview?.page || '-';
+function savePrefs() {
+  localStorage.setItem(LS_LICENSE, els.licenseKey.value.trim());
+  localStorage.setItem(LS_STYLE,   els.styleNumber.value.trim());
+  localStorage.setItem(LS_MODE,    STATE.outputMode);
 }
 
-function escapeHtml(str) {
-  return String(str ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-}
-
-function fillPageSelect(select, numPages) {
-  if (!select) return;
-  select.innerHTML = '';
-  for (let i = 1; i <= numPages; i++) {
-    const option = document.createElement('option');
-    option.value = String(i);
-    option.textContent = `Page ${i}`;
-    select.appendChild(option);
-  }
-}
-
-function badgeHtml(impact = 'low') {
-  const cls = impact === 'high' ? 'badge badge-high' : impact === 'medium' ? 'badge badge-medium' : 'badge badge-low';
-  return `<span class="${cls}">${escapeHtml(String(impact).toUpperCase())}</span>`;
-}
-
-function statusBadgeHtml(status = 'Changed') {
-  const normalized = String(status || 'Changed');
-  let cls = 'badge badge-medium';
-  if (normalized === 'Changed') cls = 'badge badge-high';
-  if (normalized === 'Same') cls = 'badge badge-low';
-  if (normalized === 'Added in B') cls = 'badge badge-medium';
-  if (normalized === 'Removed from B') cls = 'badge badge-medium';
-  return `<span class="${cls}">${escapeHtml(normalized)}</span>`;
-}
-
-function toBulletList(items, emptyText) {
-  const safe = Array.isArray(items) ? items.filter(Boolean) : [];
-  return safe.length
-    ? `<ul>${safe.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
-    : `<ul><li>${escapeHtml(emptyText)}</li></ul>`;
-}
-
-function uniqueItems(items) {
-  return [...new Set((items || []).map(v => String(v).trim()).filter(Boolean))];
-}
-
-function detectCustomerProfile(comments = '') {
-  const t = String(comments || '').toLowerCase();
-  if (/attached image|see image|markup|mark up|arrow|circled|circle|photo|sketch|artwork/.test(t)) return 'image-markup';
-  if (/comment column|remarks|revise|amend|pls change|approved with comment/.test(t)) return 'text-first';
-  return 'hybrid';
-}
-
-function classifyPages(entry) {
-  const pages = entry.pageTextMap || [];
-  if (!pages.length) return { scores: [], autoTextPages: [], autoImagePages: [], autoMeasurementPages: [] };
-
-  const scores = pages.map(({ page, text, length }) => {
-    const lower = String(text || '').toLowerCase();
-    const hasMeasurement = /measurement|measure|spec|pom|size chart|size range|selected sizes|neck|chest|waist|hip|sleeve|inseam|outseam|tolerance|cup height|bottom band|armhole|strap|wing length/.test(lower);
-    const hasComment = /comment|remarks|revise|amend|change to|pls change|approved with comment|buyer comment/.test(lower);
-    const hasArtwork = /sketch|artwork|graphic|photo|placement|print|embroidery|label position/.test(lower);
-    const hasBom = /bom|fabric|trim|zipper|button|care label|hangtag|packaging|polybag/.test(lower);
-
-    let pageType = 'general';
-    let textScore = 0;
-    let imageScore = 0;
-    let measurementScore = 0;
-
-    if (hasMeasurement) {
-      pageType = 'measurement';
-      textScore += 2;
-      measurementScore += 4;
-    }
-    if (hasComment && length > 40) {
-      pageType = pageType === 'measurement' ? 'measurement+comment' : 'text-comment';
-      textScore += 3;
-    }
-    if (hasBom) textScore += 1;
-    if (hasArtwork) imageScore += 2;
-    if (length < 80) imageScore += 2;
-    if (length < 30) imageScore += 1;
-
-    return { page, length, pageType, textScore, imageScore, measurementScore };
-  });
-
-  let lastMeasurementPage = -1;
-  scores.forEach(item => {
-    if (String(item.pageType).includes('measurement')) {
-      lastMeasurementPage = item.page;
-    } else if (lastMeasurementPage > 0 && item.page > lastMeasurementPage && item.length < 120) {
-      item.imageScore += 2;
-    }
-  });
-
-  const autoTextPages = scores.filter(item => item.textScore > 0).sort((a, b) => b.textScore - a.textScore || a.page - b.page).slice(0, 3).map(item => item.page);
-  const autoImagePages = scores.filter(item => item.imageScore > 0).sort((a, b) => b.imageScore - a.imageScore || a.page - b.page).slice(0, 3).map(item => item.page);
-  const autoMeasurementPages = scores.filter(item => item.measurementScore > 0).sort((a, b) => b.measurementScore - a.measurementScore || a.page - b.page).slice(0, 3).map(item => item.page);
-
-  return { scores, autoTextPages, autoImagePages, autoMeasurementPages };
-}
-
-function pickPagesForProfile(profile, entry) {
-  const textPages = entry.autoTextPages || [];
-  const imagePages = entry.autoImagePages || [];
-  const measurementPages = entry.autoMeasurementPages || [];
-
-  if (profile === 'text-first') return { textPages: textPages.length ? textPages : measurementPages, imagePages, measurementPages };
-  if (profile === 'image-markup') return { textPages, imagePages: imagePages.length ? imagePages : textPages, measurementPages };
-  return { textPages, imagePages, measurementPages };
-}
-
-function buildTextForCompare(entry, selectedPages) {
-  const map = entry.pageTextMap || [];
-  const safeFullText = String(entry?.text || '').trim();
-  if (!selectedPages || !selectedPages.length) return safeFullText;
-  const want = new Set((selectedPages || []).map(Number));
-  const parts = map
-    .filter(p => want.has(Number(p.page)))
-    .map(p => `--- Page ${p.page} ---\n${String(p.text || '').trim()}`)
-    .filter(Boolean)
-    .filter(v => v.replace(/--- Page \d+ ---/g, '').trim().length > 0);
-  const joined = parts.join('\n\n').trim();
-  return joined || safeFullText;
-}
-
-function getPageText(entry, pageNum) {
-  return (entry.pageTextMap || []).find(p => p.page === pageNum)?.text || '';
-}
-
-function normalizeMeasurementLine(line = '') {
-  return String(line || '').replace(/\s+/g, ' ').trim();
-}
-
-const COMMON_SIZE_HEADERS = ['XXS','XS','S','M','L','XL','XXL','2XL','3XL','4XL','5XL','32B','34B','36B','38B','40B','32C','34C','36C','38C','40C','32D','34D','36D','38D','40D','32DD','34DD','36DD','38DD','40DD'];
-const MEASUREMENT_HINTS = /(pom|point of measure|pts of measure|measurements|measurement spec|neck|chest|waist|hip|sleeve|length|opening|bottom|shoulder|inseam|outseam|tolerance|body length|across|armhole|sweep|bicep|cuff)/i;
-const NON_MEASUREMENT_HINTS = /(bom|costing|fabric|trim|supplier|article|centric|detail|packaging|polybag|hangtag|label artwork|revision date)/i;
-
-function looksLikeMeasurementLine(clean = '') {
-  const numberCount = (clean.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || []).length;
-  const sizeCount = (clean.match(/\b(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL)\b/gi) || []).length;
-  const likelyMeasurementByStructure = numberCount >= 2 && (sizeCount >= 1 || /tol|tolerance|spec|measure|cup|band|armhole|strap|wing/i.test(clean));
-  return (MEASUREMENT_HINTS.test(clean) || likelyMeasurementByStructure) && !NON_MEASUREMENT_HINTS.test(clean);
-}
-
-function parseMeasurementLine(line = '') {
-  const clean = normalizeMeasurementLine(line);
-  if (!looksLikeMeasurementLine(clean)) return null;
-
-  const tokens = clean.split(/\s+/).filter(Boolean);
-  const sizeTokens = tokens.filter(token => COMMON_SIZE_HEADERS.includes(token.toUpperCase()));
-  const numberTokens = clean.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || [];
-
-  const pomMatch = clean.match(/^(POM\s*[A-Z0-9.-]+|POINT OF MEASURE\s*[A-Z0-9.-]*|PTS OF MEASURE\s*[A-Z0-9.-]*|[A-Z]\.|[A-Z][0-9])/i);
-  const numberCount = numberTokens.length;
-  const fallbackPom = numberCount >= 2 ? 'POM' : '';
-  const pomName = normalizeMeasurementLine(pomMatch?.[1] || fallbackPom);
-  const withoutPom = pomMatch ? clean.replace(pomMatch[1], '').trim() : clean;
-
-  let description = withoutPom;
-  const cutIdx = withoutPom.search(/\s(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|-?\d+(?:\.\d+)?(?:\/\d+)?)/i);
-  if (cutIdx > 0) description = withoutPom.slice(0, cutIdx).trim();
-  description = normalizeMeasurementLine(description || clean);
-  if (!description || description === '-') description = normalizeMeasurementLine(withoutPom || clean);
-
-  const sizeValueMap = {};
-  if (sizeTokens.length && numberTokens.length) {
-    sizeTokens.forEach((size, i) => {
-      if (numberTokens[i] !== undefined) sizeValueMap[size.toUpperCase()] = numberTokens[i];
-    });
-  } else if (numberTokens.length && numberTokens.length <= 12) {
-    numberTokens.forEach((value, i) => { sizeValueMap[`Value ${i + 1}`] = value; });
-  }
-
-  const keyBase = normalizeMeasurementLine(`${pomName} ${description}` || clean).toLowerCase();
-  const key = keyBase || normalizeMeasurementLine(clean).toLowerCase();
-  if (!key) return null;
-  return { pomName: pomName || 'POM', description, sizeValueMap, raw: clean, key };
-}
-
-function extractMeasurementLines(entry, pages) {
-  const lines = [];
-  (pages || []).forEach(pageNum => {
-    const pageText = String(getPageText(entry, pageNum) || '');
-    const chunks = pageText
-      .replace(/\b(Displaying\s+\d+\s*-\s*\d+\s+of\s+\d+\s+results)\b/gi, '\n$1\n')
-      .replace(/\b(POM Name|Description|Tolerance Message|Measurement Chart|Size Chart|Selected Sizes)\b/gi, '\n$1\n')
-      .replace(/\b(B\d+(?:\.\d+)?|D\d+(?:\.\d+)?|F\d+(?:\.\d+)?|J\d+(?:\.\d+)?)\b/g, '\n$1')
-      .split(/\n+/)
-      .map(normalizeMeasurementLine)
-      .filter(Boolean);
-
-    chunks.forEach(line => {
-      const parsed = parseMeasurementLine(line);
-      if (parsed?.key) lines.push({ page: pageNum, line, ...parsed });
+// ── Output mode radios ───────────────────────────────────
+function renderOutputModes() {
+  const modes = ['FULL','SUMMARY','MEASUREMENT_ONLY','BOM_ONLY','DEBUG_ALL'];
+  els.outputGroup.innerHTML = modes.map((m) => `
+    <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800">
+      <input type="radio" name="output-mode" value="${m}" ${m === STATE.outputMode ? 'checked' : ''}>
+      <span>${I18N.outputModes[m]}</span>
+    </label>
+  `).join('');
+  els.outputGroup.querySelectorAll('input[name="output-mode"]').forEach((r) => {
+    r.addEventListener('change', (e) => {
+      STATE.outputMode = e.target.value;
+      savePrefs();
     });
   });
-  return lines;
 }
 
-function extractRawMeasurementCandidates(entry, pages) {
-  const out = [];
-  (pages || []).forEach(pageNum => {
-    const text = getPageText(entry, pageNum);
-    String(text || '')
-      .split(/(?=\b(?:POM|POINT OF MEASURE|PTS OF MEASURE|NECK|CHEST|WAIST|HIP|SLEEVE|LENGTH|OPENING|BOTTOM|SHOULDER|INSEAM|OUTSEAM|TOLERANCE|BODY LENGTH|ACROSS|ARMHOLE|SWEEP|BICEP|CUFF|CUP HEIGHT|CUP LENGTH|BOTTOM BAND|WING LENGTH|STRAP LENGTH|CENTER FRONT|SIDESEAM)\b)/i)
-      .map(normalizeMeasurementLine)
-      .filter(Boolean)
-      .forEach(line => {
-        const nums = line.match(/-?\d+(?:\.\d+)?(?:\/\d+)?/g) || [];
-        if (nums.length >= 2 && !NON_MEASUREMENT_HINTS.test(line)) {
-          out.push({ page: pageNum, raw: line, nums, key: line.toLowerCase().replace(/\d+(?:\.\d+)?(?:\/\d+)?/g, '#') });
-        }
-      });
+// ── Progress bar (7-step) ────────────────────────────────
+const STEP_KEYS = ['extractor','measurement','comment','image','bom','summarizer','qaReview'];
+
+function renderProgress(agentStatus = {}) {
+  els.progressList.innerHTML = STEP_KEYS.map((k) => {
+    const st = (agentStatus[k] || 'PENDING').toUpperCase();
+    const cls =
+      st === 'DONE'    ? 'step-done'    :
+      st === 'RUNNING' ? 'step-running' :
+      st === 'SKIPPED' ? 'step-skipped' :
+      st === 'FAILED'  ? 'step-failed'  : 'step-pending';
+    const label = I18N.agentLabels[k] || k;
+    const stLab = I18N.agentStatus[st] || st;
+    return `<li class="step-chip ${cls}" title="${k}: ${st}">${label} · ${stLab}</li>`;
+  }).join('');
+}
+
+function resetProgress() {
+  const init = {};
+  STEP_KEYS.forEach((k) => init[k] = 'PENDING');
+  renderProgress(init);
+}
+
+// ── Tabs ─────────────────────────────────────────────────
+function activateTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b) => {
+    b.classList.toggle('tab-btn-active', b.dataset.tab === name);
   });
-  return out;
-}
-
-
-function normalizeSizeLabel(size = '') {
-  const s = String(size || '').trim().toUpperCase().replace(/\s+/g, '');
-  const map = {
-    '2XS': 'XXS',
-    'XS': 'XS',
-    'S': 'S',
-    'M': 'M',
-    'L': 'L',
-    'XL': 'XL',
-    '1X': 'XL',
-    'XXL': 'XXL',
-    '2XL': 'XXL',
-    '3XL': '3XL',
-    '4XL': '4XL',
-    '5XL': '5XL'
-  };
-  return map[s] || s || 'VALUE';
-}
-
-function normalizeMeasurementKey(pom = '', desc = '') {
-  return `${pom} ${desc}`
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/(point of measure|pts of measure|measurement|measurements|spec|tol|tolerance)/g, ' ')
-    .replace(/(body|garment)/g, ' ')
-    .replace(/(hps|cf|cb)/g, ' ')
-    .replace(/1 below armhole/g, ' chest ')
-    .replace(/pit to pit/g, ' chest ')
-    .replace(/across chest/g, ' chest ')
-    .replace(/across shoulder/g, ' shoulder ')
-    .replace(/sleeve length from shoulder/g, ' sleeve length ')
-    .replace(/body length from hps/g, ' body length ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function compareParsedMeasurementRowsFuzzy(linesA, linesB) {
-  const normalizeLine = (item) => ({
-    ...item,
-    normKey: normalizeMeasurementKey(item?.pomName || '', item?.description || ''),
-    normSizes: Object.fromEntries(Object.entries(item?.sizeValueMap || {}).map(([k,v]) => [normalizeSizeLabel(k), v]))
-  });
-
-  const aList = (linesA || []).map(normalizeLine).filter(item => item.normKey);
-  const bList = (linesB || []).map(normalizeLine).filter(item => item.normKey);
-  const usedB = new Set();
-  const rows = [];
-
-  for (const a of aList) {
-    let best = null;
-    let bestIndex = -1;
-    for (let i = 0; i < bList.length; i++) {
-      if (usedB.has(i)) continue;
-      const b = bList[i];
-      if (a.normKey === b.normKey || a.normKey.includes(b.normKey) || b.normKey.includes(a.normKey)) {
-        best = b;
-        bestIndex = i;
-        break;
-      }
-    }
-    if (!best) continue;
-    usedB.add(bestIndex);
-
-    const sizeKeys = [...new Set([...Object.keys(a.normSizes || {}), ...Object.keys(best.normSizes || {})])];
-    sizeKeys.forEach(size => {
-      const valueA = a.normSizes?.[size] ?? '-';
-      const valueB = best.normSizes?.[size] ?? '-';
-      const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
-      if (status !== 'Same') {
-        rows.push({
-          pomName: a.pomName || best.pomName || 'POM',
-          description: a.description || best.description || '-',
-          size,
-          valueA,
-          valueB,
-          status,
-          pageA: a.page || '-',
-          pageB: best.page || '-',
-          impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam|band|cup|wing|shoulder/.test(`${a.pomName || ''} ${a.description || best.description || ''}`.toLowerCase()) ? 'high' : 'medium'
-        });
-      }
-    });
-  }
-
-  return rows;
-}
-
-
-function buildFallbackMeasurementRows(entryA, entryB, pagesA, pagesB) {
-  const candA = extractRawMeasurementCandidates(entryA, pagesA);
-  const candB = extractRawMeasurementCandidates(entryB, pagesB);
-  const mapB = new Map(candB.map(item => [item.key, item]));
-  const rows = [];
-
-  candA.slice(0, 40).forEach(itemA => {
-    const itemB = mapB.get(itemA.key);
-    if (!itemB) return;
-    const max = Math.max(itemA.nums.length, itemB.nums.length);
-    for (let i = 0; i < max; i++) {
-      const valueA = itemA.nums[i] || '-';
-      const valueB = itemB.nums[i] || '-';
-      if (valueA !== valueB) {
-        rows.push({
-          pomName: 'POM',
-          description: itemA.raw.replace(/\s+/g, ' ').slice(0, 120),
-          size: `Value ${i + 1}`,
-          valueA,
-          valueB,
-          status: valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed',
-          pageA: itemA.page,
-          pageB: itemB.page,
-          impact: 'medium'
-        });
-      }
-    }
-  });
-
-  return rows;
-
-
-}
-
-async function buildPreviewForSide(side, pageNum, setVisible = false) {
-  const entry = state[side];
-  if (!entry?.pdf || !pageNum) return null;
-  const page = await entry.pdf.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 1.4 });
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  await page.render({ canvasContext: context, viewport }).promise;
-  const dataUrl = canvas.toDataURL('image/png');
-  const preview = { page: pageNum, dataUrl, width: canvas.width, height: canvas.height };
-
-  if (setVisible) {
-    state[side].preview = preview;
-    const img = side === 'A' ? previewImgA : previewImgB;
-    const meta = side === 'A' ? previewMetaA : previewMetaB;
-    if (img) img.src = dataUrl;
-    if (meta) meta.textContent = `Page ${pageNum} · ${canvas.width} × ${canvas.height}`;
-    updateStats();
-  }
-
-  return preview;
-}
-
-async function renderPagePreview(side, pageNum) {
-  await buildPreviewForSide(side, pageNum, true);
-}
-
-async function extractPdfText(file, side) {
-  if (!file) return;
-  const meta = side === 'A' ? fileAMeta : fileBMeta;
-  const nameEl = side === 'A' ? fileAName : fileBName;
-  const pageSelect = side === 'A' ? textASelect : textBSelect;
-
-  try {
-    setActionStatus(`Reading PDF ${side}...`);
-    const buffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-    const pageTexts = [];
-    const pageTextMap = [];
-
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const content = await page.getTextContent();
-      const line = content.items.map(item => item.str || '').join(' ').replace(/\s+/g, ' ').trim();
-      pageTexts.push(`--- Page ${pageNum} ---\n${line}`);
-      pageTextMap.push({ page: pageNum, text: line, length: line.length });
-    }
-
-    const fullText = pageTexts.join('\n\n');
-    const nextEntry = {
-      name: file.name,
-      pages: pdf.numPages,
-      text: fullText,
-      pdf,
-      preview: null,
-      pageTextMap,
-      pageScores: [],
-      autoTextPages: [],
-      autoImagePages: [],
-      autoMeasurementPages: []
-    };
-
-    const classified = classifyPages(nextEntry);
-    nextEntry.pageScores = classified.scores;
-    nextEntry.autoTextPages = classified.autoTextPages;
-    nextEntry.autoImagePages = classified.autoImagePages;
-    nextEntry.autoMeasurementPages = classified.autoMeasurementPages;
-    state[side] = nextEntry;
-
-    if (nameEl) nameEl.textContent = file.name;
-    if (meta) meta.textContent = `Pages: ${pdf.numPages} · Characters: ${fullText.length.toLocaleString()} · Auto compare ready`;
-    fillPageSelect(pageSelect, pdf.numPages);
-    const firstPreviewPage = nextEntry.autoImagePages[0] || nextEntry.autoMeasurementPages[0] || 1;
-    if (pageSelect) pageSelect.value = String(firstPreviewPage);
-    await renderPagePreview(side, firstPreviewPage);
-    setActionStatus(`PDF ${side} ready`);
-  } catch (error) {
-    if (meta) meta.textContent = 'Pages: - · Characters: -';
-    console.error(error);
-    setActionStatus(`Failed to read PDF ${side}: ${error.message}`);
-  } finally {
-    updateStats();
-  }
-}
-
-function bindDropzone(dropId, input, side) {
-  const zone = document.getElementById(dropId);
-  if (!zone || !input) return;
-  ['dragenter', 'dragover'].forEach(name => zone.addEventListener(name, e => {
-    e.preventDefault();
-    zone.classList.add('dragover');
-  }));
-  ['dragleave', 'drop'].forEach(name => zone.addEventListener(name, e => {
-    e.preventDefault();
-    zone.classList.remove('dragover');
-  }));
-  zone.addEventListener('drop', e => {
-    const file = e.dataTransfer?.files?.[0];
-    if (file && file.type === 'application/pdf') {
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      input.files = dt.files;
-      extractPdfText(file, side);
-    }
+  document.querySelectorAll('.tab-panel').forEach((p) => {
+    p.classList.toggle('hidden', p.id !== `tab-panel-${name}`);
   });
 }
 
-async function callJson(url, payload) {
-  const res = await fetch(url, {
+document.querySelectorAll('.tab-btn').forEach((b) => {
+  b.addEventListener('click', () => activateTab(b.dataset.tab));
+});
+
+// ── Severity helpers ─────────────────────────────────────
+function sevClassForBomLike(severity) {
+  if (severity === 'CRITICAL' || severity === 'MAJOR') return 'sev-RED';
+  if (severity === 'MINOR')                            return 'sev-YELLOW';
+  return 'sev-GREY';
+}
+function sevClassForMeasurement(status, toleranceExceeded) {
+  if (toleranceExceeded || status === 'ADDED' || status === 'REMOVED') return 'sev-RED';
+  if (status === 'CHANGED') return 'sev-YELLOW';
+  return 'sev-GREY';
+}
+function sevClassForQa(status) {
+  if (status === 'FAIL') return 'sev-RED';
+  if (status === 'WARN') return 'sev-YELLOW';
+  return 'sev-GREY';
+}
+
+const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+}[c]));
+
+// ── Render tabs from envelope ────────────────────────────
+function renderResult(envelope) {
+  STATE.lastEnvelope = envelope;
+  const data    = envelope.data || {};
+  const arts    = data.artifacts || {};
+  const debugOn = !!(envelope.meta && envelope.meta.debug);
+
+  els.resultSec.classList.remove('hidden');
+  els.errorSec.classList.add('hidden');
+  els.exportBtn.disabled = false;
+  els.tabDebug.classList.toggle('hidden', !debugOn);
+
+  renderSummaryTab(arts.summary);
+  renderMeasurementTab(arts.measurement_changes || []);
+  renderCommentsTab(arts.comments || [], arts.images || []);
+  renderBomTab(arts.bom_changes || []);
+  renderQaTab(arts.qa_review);
+  if (debugOn) renderDebugTab(envelope);
+
+  // 預設切到 summary
+  activateTab('summary');
+
+  // meta pills
+  const meta = envelope.meta || {};
+  els.durationPill.textContent = `${meta.duration_ms || 0} ms${meta.cached ? ' ' + I18N.msg.cached : ''}`;
+  els.durationPill.classList.remove('hidden');
+  els.tokensPill.textContent = `${meta.total_tokens || 0} tokens`;
+  els.tokensPill.classList.remove('hidden');
+  els.providerName.textContent = meta.provider || '—';
+}
+
+function emptyState(msg) {
+  return `<div class="text-sm text-slate-500 dark:text-slate-400 italic">${escapeHtml(msg)}</div>`;
+}
+
+function renderSummaryTab(summary) {
+  const p = $('tab-panel-summary');
+  if (!summary) { p.innerHTML = emptyState(I18N.msg.noData); return; }
+  const bullets = (summary.bullet_points || []).map((b) => `<li>${escapeHtml(b)}</li>`).join('');
+  const costs   = (summary.cost_risk_items || []).map((b) => `<li>${escapeHtml(b)}</li>`).join('');
+  const prods   = (summary.production_risk_items || []).map((b) => `<li>${escapeHtml(b)}</li>`).join('');
+  const decisions = (summary.decisions || []).map((d) => `
+    <div class="rounded-md border border-slate-200 dark:border-slate-700 p-3">
+      <div class="font-medium text-sm">${escapeHtml(d.title)}</div>
+      <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">${escapeHtml(d.detail)}</div>
+      ${d.impacted_poms?.length ? `<div class="text-xs mt-1">影響 POM: <span class="font-mono">${d.impacted_poms.map(escapeHtml).join(', ')}</span></div>` : ''}
+    </div>
+  `).join('');
+
+  p.innerHTML = `
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      ${statCard('總變更', summary.total_changes)}
+      ${statCard('尺寸變更', summary.total_measurement_changes)}
+      ${statCard('註解項', summary.total_comment_items)}
+      ${statCard('BOM 變更', summary.total_bom_changes)}
+    </div>
+    <h3 class="text-sm font-semibold mb-2">重點摘要</h3>
+    <ul class="list-disc pl-5 space-y-1 text-sm mb-5">${bullets || `<li class="italic text-slate-500">無</li>`}</ul>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+      <div>
+        <h3 class="text-sm font-semibold mb-2">成本風險</h3>
+        <ul class="list-disc pl-5 space-y-1 text-sm">${costs || `<li class="italic text-slate-500">無</li>`}</ul>
+      </div>
+      <div>
+        <h3 class="text-sm font-semibold mb-2">生產風險</h3>
+        <ul class="list-disc pl-5 space-y-1 text-sm">${prods || `<li class="italic text-slate-500">無</li>`}</ul>
+      </div>
+    </div>
+
+    <h3 class="text-sm font-semibold mb-2">決策建議</h3>
+    <div class="space-y-2">${decisions || emptyState('無')}</div>
+  `;
+}
+function statCard(label, value) {
+  return `
+    <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+      <div class="text-xs text-slate-500 dark:text-slate-400">${escapeHtml(label)}</div>
+      <div class="text-2xl font-semibold mt-1 font-mono">${value ?? 0}</div>
+    </div>
+  `;
+}
+
+function renderMeasurementTab(rows) {
+  const p = $('tab-panel-measurement');
+  if (!rows.length) { p.innerHTML = emptyState(I18N.msg.noData); return; }
+  const body = rows.map((r) => `
+    <tr>
+      <td class="font-mono text-xs">${escapeHtml(r.pom_code || '')}</td>
+      <td>${escapeHtml(r.pom_name)}</td>
+      <td>${escapeHtml(r.size_label)}</td>
+      <td class="font-mono">${r.old_value ?? '—'}</td>
+      <td class="font-mono">${r.new_value ?? '—'}</td>
+      <td class="font-mono">${r.diff_value > 0 ? '+' : ''}${r.diff_value ?? '—'}</td>
+      <td>${escapeHtml(r.unit)}</td>
+      <td><span class="px-2 py-0.5 rounded text-xs ${sevClassForMeasurement(r.status, r.tolerance_exceeded)}">${I18N.severity[r.status] || r.status}${r.tolerance_exceeded ? ' · 超容差' : ''}</span></td>
+      <td class="font-mono text-xs">${(r.confidence ?? 0).toFixed(2)}</td>
+    </tr>
+  `).join('');
+  p.innerHTML = `
+    <div class="overflow-x-auto">
+      <table class="data-table">
+        <thead><tr>
+          <th>POM 代碼</th><th>POM 名稱</th><th>尺碼</th>
+          <th>舊值</th><th>新值</th><th>差異</th><th>單位</th>
+          <th>狀態</th><th>信心</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderCommentsTab(comments, images) {
+  const p = $('tab-panel-comments');
+  if (!comments.length && !images.length) { p.innerHTML = emptyState(I18N.msg.noData); return; }
+  const cBody = comments.map((c) => `
+    <tr>
+      <td class="font-mono text-xs">${escapeHtml(c.comment_id || '')}</td>
+      <td>${escapeHtml(c.source)}</td>
+      <td>${escapeHtml(c.comment_text)}</td>
+      <td>${escapeHtml(c.related_pom || '')}</td>
+      <td><span class="px-2 py-0.5 rounded text-xs ${sevClassForBomLike(c.severity)}">${I18N.severity[c.severity] || c.severity}</span></td>
+      <td class="font-mono text-xs">${(c.confidence ?? 0).toFixed(2)}</td>
+    </tr>
+  `).join('');
+  const iBody = images.map((i) => `
+    <tr>
+      <td class="font-mono text-xs">${escapeHtml(i.image_id || '')}</td>
+      <td>${escapeHtml(i.change_type)}</td>
+      <td>${escapeHtml(i.before_desc || '')}</td>
+      <td>${escapeHtml(i.after_desc || '')}</td>
+      <td>${escapeHtml(i.diff_summary || '')}</td>
+      <td class="font-mono text-xs">${(i.confidence ?? 0).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  p.innerHTML = `
+    <h3 class="text-sm font-semibold mb-2">註解 (${comments.length})</h3>
+    <div class="overflow-x-auto mb-6">
+      <table class="data-table">
+        <thead><tr><th>ID</th><th>來源</th><th>內容</th><th>關聯 POM</th><th>嚴重度</th><th>信心</th></tr></thead>
+        <tbody>${cBody || `<tr><td colspan="6" class="italic text-slate-500">無</td></tr>`}</tbody>
+      </table>
+    </div>
+    <h3 class="text-sm font-semibold mb-2">圖像變更 (${images.length})</h3>
+    <div class="overflow-x-auto">
+      <table class="data-table">
+        <thead><tr><th>ID</th><th>類型</th><th>舊版描述</th><th>新版描述</th><th>差異</th><th>信心</th></tr></thead>
+        <tbody>${iBody || `<tr><td colspan="6" class="italic text-slate-500">無</td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderBomTab(rows) {
+  const p = $('tab-panel-bom');
+  if (!rows.length) { p.innerHTML = emptyState(I18N.msg.noData); return; }
+  const body = rows.map((r) => `
+    <tr>
+      <td class="font-mono text-xs">${escapeHtml(r.material_code || '')}</td>
+      <td>${escapeHtml(r.material_type)}</td>
+      <td>${escapeHtml(r.description)}</td>
+      <td>${escapeHtml(r.supplier || '')}</td>
+      <td class="font-mono">${r.old_qty ?? '—'}</td>
+      <td class="font-mono">${r.new_qty ?? '—'}</td>
+      <td class="font-mono">${r.diff_qty > 0 ? '+' : ''}${r.diff_qty ?? '—'}</td>
+      <td>${escapeHtml(r.unit || '')}</td>
+      <td>${escapeHtml(r.impact)}</td>
+      <td><span class="px-2 py-0.5 rounded text-xs ${sevClassForBomLike(r.severity)}">${I18N.severity[r.severity] || r.severity}</span></td>
+      <td class="font-mono text-xs">${(r.confidence ?? 0).toFixed(2)}</td>
+    </tr>
+  `).join('');
+  p.innerHTML = `
+    <div class="overflow-x-auto">
+      <table class="data-table">
+        <thead><tr>
+          <th>料號</th><th>類型</th><th>描述</th><th>供應商</th>
+          <th>舊用量</th><th>新用量</th><th>差異</th><th>單位</th>
+          <th>影響</th><th>嚴重度</th><th>信心</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderQaTab(qa) {
+  const p = $('tab-panel-qa');
+  if (!qa) { p.innerHTML = emptyState(I18N.msg.noData); return; }
+  const items = (qa.findings || []).map((f) => `
+    <li class="flex items-start gap-2">
+      <span class="px-2 py-0.5 rounded text-xs ${
+        f.severity === 'ERROR' ? 'sev-RED' :
+        f.severity === 'WARN'  ? 'sev-YELLOW' : 'sev-GREY'
+      }">${escapeHtml(f.severity)}</span>
+      <span><span class="font-mono text-xs text-slate-500">[${escapeHtml(f.agent)}]</span> ${escapeHtml(f.message)}</span>
+    </li>
+  `).join('');
+  p.innerHTML = `
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-3 py-1 rounded-md text-sm font-medium ${sevClassForQa(qa.status)}">${I18N.severity[qa.status] || qa.status}</span>
+      <span class="text-xs text-slate-500">總體風險: ${I18N.severity[qa.overall_risk] || qa.overall_risk || '—'}</span>
+    </div>
+    <h3 class="text-sm font-semibold mb-2">QA 發現 (${(qa.findings || []).length})</h3>
+    <ul class="space-y-2 text-sm">${items || emptyState('無')}</ul>
+    ${qa.recommendation ? `<div class="mt-4 text-sm"><span class="font-semibold">建議:</span> ${escapeHtml(qa.recommendation)}</div>` : ''}
+  `;
+}
+
+function renderDebugTab(envelope) {
+  const p = $('tab-panel-debug');
+  p.innerHTML = `
+    <pre class="text-xs font-mono whitespace-pre-wrap bg-slate-100 dark:bg-slate-950 p-3 rounded overflow-auto max-h-[60vh]">${escapeHtml(JSON.stringify(envelope, null, 2))}</pre>
+  `;
+}
+
+// ── API call ─────────────────────────────────────────────
+async function callApi(path, payload) {
+  const license = els.licenseKey.value.trim();
+  const res = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-License-Key': license
+    },
     body: JSON.stringify(payload)
   });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || data.message || 'Request failed');
-  return data;
+  const json = await res.json().catch(() => ({}));
+  return { httpStatus: res.status, envelope: json };
 }
 
-async function extractMeasurementTableViaOCR(side, pages) {
-  const rows = [];
-  const targetPages = (pages || []).slice(0, 3);
-  if (!targetPages.length) return rows;
-
-  for (const pageNum of targetPages) {
-    try {
-      setActionStatus(`Extracting measurement tables... ${side} page ${pageNum}`);
-      const preview = await buildPreviewForSide(side, pageNum, false);
-      if (!preview?.dataUrl) continue;
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 25000);
-      const res = await fetch('/.netlify/functions/extract-measurement-table', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: preview.dataUrl, side, page: pageNum }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeout);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || data.message || `Measurement OCR failed on ${side} page ${pageNum}`);
-
-      const pageRows = Array.isArray(data?.result?.rows) ? data.result.rows : [];
-      pageRows.forEach(row => rows.push({ ...row, page: pageNum }));
-    } catch (error) {
-      console.warn(`Measurement OCR skipped for ${side} page ${pageNum}:`, error);
-    }
+async function runWorkflow() {
+  if (!els.licenseKey.value.trim()) {
+    setStatus(I18N.msg.licenseRequired, 'error');
+    return;
+  }
+  if (!els.oldText.value.trim() || !els.newText.value.trim()) {
+    setStatus(I18N.msg.missingText, 'error');
+    return;
   }
 
-  return rows;
-}
+  STATE.styleNumber = els.styleNumber.value.trim() || 'STYLE-DEMO-001';
+  savePrefs();
 
-function compareExtractedMeasurementRows(rowsA, rowsB) {
-  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const mapA = new Map((rowsA || []).map(r => [norm(`${r.pom_name} ${r.description}`), r]));
-  const mapB = new Map((rowsB || []).map(r => [norm(`${r.pom_name} ${r.description}`), r]));
-  const keys = [...new Set([...mapA.keys(), ...mapB.keys()])];
-  const rows = [];
+  setStatus(I18N.msg.running, 'info');
+  els.runBtn.disabled = true;
+  els.exportBtn.disabled = true;
+  els.progressSec.classList.remove('hidden');
+  els.errorSec.classList.add('hidden');
+  els.resultSec.classList.add('hidden');
 
-  keys.forEach(key => {
-    const a = mapA.get(key);
-    const b = mapB.get(key);
-    const sizeKeys = [...new Set([...Object.keys(a?.size_values || {}), ...Object.keys(b?.size_values || {})])];
+  // RUNNING 動畫 — 不會 SSE,先全部標 RUNNING
+  const runningStatus = {};
+  STEP_KEYS.forEach((k) => runningStatus[k] = 'RUNNING');
+  renderProgress(runningStatus);
 
-    sizeKeys.forEach(size => {
-      const rawA = a?.size_values?.[size];
-      const rawB = b?.size_values?.[size];
-      const valueA = rawA === undefined || rawA === null || String(rawA).trim() === '' ? '-' : String(rawA).trim();
-      const valueB = rawB === undefined || rawB === null || String(rawB).trim() === '' ? '-' : String(rawB).trim();
-      const status = valueA === valueB ? 'Same' : valueA === '-' ? 'Added in B' : valueB === '-' ? 'Removed from B' : 'Changed';
-
-      if (status !== 'Same') {
-        rows.push({
-          pomName: a?.pom_name || b?.pom_name || 'POM',
-          description: a?.description || b?.description || '-',
-          size,
-          valueA,
-          valueB,
-          status,
-          pageA: a?.page || '-',
-          pageB: b?.page || '-',
-          impact: /tolerance|neck|chest|waist|hip|sleeve|length|inseam|outseam|band|cup|wing/.test(`${a?.pom_name || ''} ${a?.description || b?.description || ''}`.toLowerCase()) ? 'high' : 'medium'
-        });
-      }
-    });
-  });
-
-  const changes = rows.map(row => ({
-    before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
-    after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
-    impact: row.impact
-  }));
-
-  const summary = rows.length
-    ? `${rows.length} measurement difference row(s) were identified by OCR table extraction.`
-    : 'No clear measurement changes found.';
-
-  return { summary, changes, rows };
-}
-
-async function runMultiImageCompare(pickA, pickB) {
-  const pairs = [];
-  const pagesA = pickA?.imagePages?.length ? pickA.imagePages : pickA?.textPages || [];
-  const pagesB = pickB?.imagePages?.length ? pickB.imagePages : pickB?.textPages || [];
-  const max = Math.min(Math.max(pagesA.length, pagesB.length), 3);
-
-  for (let i = 0; i < max; i++) {
-    const pageA = pagesA[i] || pagesA[0];
-    const pageB = pagesB[i] || pagesB[0];
-    if (!pageA || !pageB) continue;
-
-    const previewA = await buildPreviewForSide('A', pageA, i === 0);
-    const previewB = await buildPreviewForSide('B', pageB, i === 0);
-    const result = await callJson('/.netlify/functions/analyze-techpack-images', {
-      imageA: previewA?.dataUrl || '',
-      imageB: previewB?.dataUrl || '',
-      pageA,
-      pageB,
-      comments: commentsInput?.value || ''
-    });
-    pairs.push({ pageA, pageB, result });
-  }
-
-  const summaries = uniqueItems(pairs.map(item => item.result?.result?.summary || ''));
-  const visible_comments = uniqueItems(pairs.flatMap(item => item.result?.result?.visible_comments || []));
-  const visual_changes = pairs.flatMap(item => (item.result?.result?.visual_changes || []).map(change => ({ ...change, area: `${change.area || 'Visual area'} (A${item.pageA} vs B${item.pageB})` })));
-  const action_items = uniqueItems(pairs.flatMap(item => item.result?.result?.action_items || []));
-
-  return {
-    ok: true,
-    mode: 'merged_multi_page_image_review',
-    result: {
-      summary: summaries.join(' '),
-      visible_comments,
-      visual_changes,
-      action_items
-    }
+  const payload = {
+    style_number: STATE.styleNumber,
+    output_mode:  STATE.outputMode,
+    // backend 期望 techPackA / techPackB / buyerComments (見 run-workflow.js body 對應)
+    techPackA:    { rawText: els.oldText.value },
+    techPackB:    { rawText: els.newText.value },
+    buyerComments: ''
   };
+
+  try {
+    const { httpStatus, envelope } = await callApi('/api/run-workflow', payload);
+    if (!envelope?.success) {
+      showError(envelope, httpStatus);
+      // 失敗時把所有 RUNNING 標 FAILED
+      const failed = {};
+      STEP_KEYS.forEach((k) => failed[k] = 'FAILED');
+      renderProgress(failed);
+      return;
+    }
+    renderProgress(envelope.data?.agentStatus || {});
+    renderResult(envelope);
+    setStatus(I18N.msg.done, 'success');
+  } catch (err) {
+    showError({ error: { code: 'NETWORK_ERROR', message: String(err) } }, 0);
+  } finally {
+    els.runBtn.disabled = false;
+  }
 }
 
-function buildPointFormSummary({ textData, imageData, measurementData, imageSkipped = false, imageError = '' }) {
-  const textResult = textData?.result || {};
-  const textSummary = textResult.summary || {};
-  const textDiffs = Array.isArray(textResult.differences) ? textResult.differences : [];
-  const buyerComments = Array.isArray(textResult.buyer_comments) ? textResult.buyer_comments : [];
-  const textActions = Array.isArray(textResult.action_items) ? textResult.action_items : [];
-  const imageResult = imageData?.result || {};
-  const imageComments = Array.isArray(imageResult.visible_comments) ? imageResult.visible_comments : [];
-  const imageChanges = Array.isArray(imageResult.visual_changes) ? imageResult.visual_changes : [];
-  const imageActions = Array.isArray(imageResult.action_items) ? imageResult.action_items : [];
-  const measurementSummary = measurementData?.summary || '';
-  const measurementChanges = Array.isArray(measurementData?.changes) ? measurementData.changes : [];
+function setStatus(text, kind = 'info') {
+  els.statusMsg.textContent = text;
+  els.statusMsg.className = 'text-xs ' + (
+    kind === 'error'   ? 'text-red-600 dark:text-red-400 font-medium' :
+    kind === 'success' ? 'text-emerald-600 dark:text-emerald-400 font-medium' :
+                         'text-slate-500 dark:text-slate-400'
+  );
+}
 
-  const topSummary = uniqueItems([
-    textSummary.overview || '',
-    measurementSummary || '',
-    imageResult.summary || '',
-    imageSkipped ? 'Image review was skipped because preview pages were not ready.' : '',
-    imageError ? `Image review failed: ${imageError}` : ''
+function showError(envelope, httpStatus) {
+  els.errorSec.classList.remove('hidden');
+  els.resultSec.classList.add('hidden');
+  const err = envelope?.error || { code: 'UNKNOWN', message: 'Unexpected error' };
+  els.errorBody.textContent = `[HTTP ${httpStatus}] [${err.code}] ${err.message}\n\nrequest_id: ${envelope?.meta?.request_id || envelope?.data?.request_id || '—'}`;
+  setStatus(I18N.msg.failed, 'error');
+}
+
+// ── Excel export (SheetJS) ───────────────────────────────
+function exportExcel() {
+  if (!STATE.lastEnvelope) return;
+  const env = STATE.lastEnvelope;
+  const arts = env.data?.artifacts || {};
+  const meta = env.meta || {};
+
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Summary
+  const sum = arts.summary || {};
+  const sumRows = [
+    ['款式編號', STATE.styleNumber],
+    ['輸出模式', STATE.outputMode],
+    ['Request ID', env.data?.request_id || ''],
+    ['Provider', meta.provider || ''],
+    ['處理時間 (ms)', meta.duration_ms || 0],
+    ['Token 用量', meta.total_tokens || 0],
+    ['版本', meta.version || ''],
+    ['匯出時間', new Date().toISOString()],
+    [],
+    ['── 統計 ──'],
+    ['總變更', sum.total_changes ?? 0],
+    ['尺寸變更', sum.total_measurement_changes ?? 0],
+    ['註解項', sum.total_comment_items ?? 0],
+    ['圖像變更', sum.total_image_changes ?? 0],
+    ['BOM 變更', sum.total_bom_changes ?? 0],
+    [],
+    ['── 重點摘要 ──'],
+    ...(sum.bullet_points || []).map((b) => [b]),
+    [],
+    ['── 成本風險 ──'],
+    ...(sum.cost_risk_items || []).map((b) => [b]),
+    [],
+    ['── 生產風險 ──'],
+    ...(sum.production_risk_items || []).map((b) => [b]),
+    [],
+    ['── 決策建議 ──'],
+    ['標題', '詳述', '影響 POM'],
+    ...(sum.decisions || []).map((d) => [d.title, d.detail, (d.impacted_poms || []).join(', ')])
+  ];
+  const sumSheet = XLSX.utils.aoa_to_sheet(sumRows);
+  sumSheet['!cols'] = [{ wch: 22 }, { wch: 60 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(wb, sumSheet, '總結');
+
+  // Sheet 2: Measurement
+  const mHeader = ['POM 代碼','POM 名稱','尺碼','舊值','新值','差異','單位','狀態','超容差','信心','舊頁','新頁'];
+  const mData = (arts.measurement_changes || []).map((r) => [
+    r.pom_code || '', r.pom_name, r.size_label, r.old_value, r.new_value, r.diff_value,
+    r.unit, r.status, r.tolerance_exceeded ? '是' : '否', r.confidence,
+    r.source_page_old, r.source_page_new
   ]);
+  const mSheet = XLSX.utils.aoa_to_sheet([mHeader, ...mData]);
+  mSheet['!cols'] = mHeader.map((h) => ({ wch: Math.max(h.length + 2, 10) }));
+  colorRows(mSheet, mData.length, mHeader.length, (i) => {
+    const r = arts.measurement_changes[i];
+    return sevColorHex(sevClassForMeasurement(r.status, r.tolerance_exceeded));
+  });
+  XLSX.utils.book_append_sheet(wb, mSheet, '尺寸變更');
 
-  const keyChangePoints = uniqueItems(textDiffs.slice(0, 8).map(item => `${item.section || 'General'}: ${item.before || '-'} → ${item.after || '-'}`));
-  const measurementPoints = uniqueItems(measurementChanges.slice(0, 8).map(item => `${item.before || '-'} → ${item.after || '-'}`));
-  const imagePoints = uniqueItems(imageChanges.slice(0, 10).map(item => `${item.area || 'Visual area'}: ${item.note || ''}`).concat(imageComments.slice(0, 6)));
-  const actionPoints = uniqueItems([...textActions, ...imageActions]);
-  const buyerPoints = uniqueItems(buyerComments.slice(0, 8));
+  // Sheet 3: Comments & Images (合成一張表,前段 comments,後段 images)
+  const cHeader = ['類型','ID','來源/變更類型','內容/描述','關聯 POM','嚴重度','信心'];
+  const cData = [
+    ...((arts.comments || []).map((c) => [
+      '註解', c.comment_id || '', c.source, c.comment_text, c.related_pom || '', c.severity, c.confidence
+    ])),
+    ...((arts.images || []).map((i) => [
+      '圖像', i.image_id || '', i.change_type, `舊: ${i.before_desc || ''}\n新: ${i.after_desc || ''}\n差異: ${i.diff_summary || ''}`, '', '', i.confidence
+    ]))
+  ];
+  const cSheet = XLSX.utils.aoa_to_sheet([cHeader, ...cData]);
+  cSheet['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 18 }, { wch: 60 }, { wch: 18 }, { wch: 12 }, { wch: 8 }];
+  colorRows(cSheet, cData.length, cHeader.length, (i) => {
+    const all = [...(arts.comments || []), ...(arts.images || [])];
+    const item = all[i];
+    return sevColorHex(sevClassForBomLike(item?.severity));
+  });
+  XLSX.utils.book_append_sheet(wb, cSheet, '註解與圖像');
 
-  const plainText = [
-    'Tech Pack Final Summary',
-    '',
-    'Overall Summary',
-    ...(topSummary.length ? topSummary : ['No overall summary generated.']).map(v => `- ${v}`),
-    '',
-    'Measurement Changes',
-    ...(measurementPoints.length ? measurementPoints : ['No clear measurement changes found.']).map(v => `- ${v}`),
-    '',
-    'Key Text Differences',
-    ...(keyChangePoints.length ? keyChangePoints : ['No key text changes found.']).map(v => `- ${v}`),
-    '',
-    'Image Comments / Visual Changes',
-    ...(imagePoints.length ? imagePoints : ['No image findings found.']).map(v => `- ${v}`),
-    '',
-    'Buyer Comments',
-    ...(buyerPoints.length ? buyerPoints : ['No buyer comments extracted.']).map(v => `- ${v}`),
-    '',
-    'Follow-up Actions',
-    ...(actionPoints.length ? actionPoints : ['No follow-up actions returned.']).map(v => `- ${v}`)
-  ].join('\n');
+  // Sheet 4: BOM
+  const bHeader = ['料號','類型','描述','顏色','規格','供應商','舊用量','新用量','差異','單位','狀態','影響','嚴重度','關聯 POM','信心','備註'];
+  const bData = (arts.bom_changes || []).map((r) => [
+    r.material_code || '', r.material_type, r.description, r.color || '', r.size_or_spec || '',
+    r.supplier || '', r.old_qty, r.new_qty, r.diff_qty, r.unit || '', r.status, r.impact,
+    r.severity, r.related_pom || '', r.confidence, r.notes || ''
+  ]);
+  const bSheet = XLSX.utils.aoa_to_sheet([bHeader, ...bData]);
+  bSheet['!cols'] = bHeader.map((h) => ({ wch: Math.max(h.length + 2, 10) }));
+  colorRows(bSheet, bData.length, bHeader.length, (i) => sevColorHex(sevClassForBomLike(arts.bom_changes[i].severity)));
+  XLSX.utils.book_append_sheet(wb, bSheet, '物料清單');
 
-  return { plainText, sections: { topSummary, measurementPoints, keyChangePoints, imagePoints, buyerPoints, actionPoints } };
+  // Sheet 5: QA Review
+  const qa = arts.qa_review || {};
+  const qHeader = ['嚴重度','Agent','訊息'];
+  const qData = (qa.findings || []).map((f) => [f.severity, f.agent, f.message]);
+  const qRows = [
+    ['QA 狀態', I18N.severity[qa.status] || qa.status || ''],
+    ['整體風險', I18N.severity[qa.overall_risk] || qa.overall_risk || ''],
+    ['建議', qa.recommendation || ''],
+    [],
+    qHeader,
+    ...qData
+  ];
+  const qSheet = XLSX.utils.aoa_to_sheet(qRows);
+  qSheet['!cols'] = [{ wch: 14 }, { wch: 18 }, { wch: 80 }];
+  XLSX.utils.book_append_sheet(wb, qSheet, 'QA Review');
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const fname = `TechPack_Comparison_${STATE.styleNumber}_${dateStr}.xlsx`;
+  XLSX.writeFile(wb, fname);
 }
 
-function renderFinalReport({ textData, imageData, measurementData, imageSkipped = false, imageError = '' }) {
-  const textResult = textData?.result || {};
-  const textDiffs = Array.isArray(textResult.differences) ? textResult.differences : [];
-  const buyerComments = Array.isArray(textResult.buyer_comments) ? textResult.buyer_comments : [];
-  const textActions = Array.isArray(textResult.action_items) ? textResult.action_items : [];
-  const imageResult = imageData?.result || {};
-  const imageComments = Array.isArray(imageResult.visible_comments) ? imageResult.visible_comments : [];
-  const imageChanges = Array.isArray(imageResult.visual_changes) ? imageResult.visual_changes : [];
-  const imageActions = Array.isArray(imageResult.action_items) ? imageResult.action_items : [];
-  const measurementRows = Array.isArray(measurementData?.rows) ? measurementData.rows : [];
-
-  const summaryPack = buildPointFormSummary({ textData, imageData, measurementData, imageSkipped, imageError });
-  state.latestSummaryText = summaryPack.plainText;
-
-  const html = `
-    <article class="report-card">
-      <header class="report-header">
-        <div>
-          <p class="eyebrow">Final report</p>
-          <h2>Tech Pack Compare Summary</h2>
-          <p class="report-subtitle">Focused on measurement changes, key text differences, image comments, and follow-up actions.</p>
-        </div>
-      </header>
-
-      <section class="report-block">
-        <h3>Overall Summary</h3>
-        ${toBulletList(summaryPack.sections.topSummary, 'No overall summary generated.')}
-      </section>
-
-      <section class="report-block">
-        <h3>Measurement Changes</h3>
-        ${measurementRows.length ? `
-          <div class="compact-table-wrap">
-            <table class="compact-table">
-              <thead>
-                <tr>
-                  <th>POM Name</th>
-                  <th>Description</th>
-                  <th>Size</th>
-                  <th>Value A</th>
-                  <th>Value B</th>
-                  <th>Status</th>
-                  <th>Impact</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${measurementRows.map(row => `
-                  <tr>
-                    <td>${escapeHtml(row.pomName || '-')}</td>
-                    <td>${escapeHtml(row.description || '-')}</td>
-                    <td>${escapeHtml(row.size || '-')}</td>
-                    <td>${escapeHtml(row.valueA || '-')}</td>
-                    <td>${escapeHtml(row.valueB || '-')}</td>
-                    <td>${statusBadgeHtml(row.status || 'Changed')}</td>
-                    <td>${badgeHtml(row.impact || 'medium')}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        ` : '<p>No clear measurement changes found.</p>'}
-      </section>
-
-      <section class="report-block">
-        <h3>Key Text Differences</h3>
-        ${textDiffs.length ? `
-          <div class="diff-list">
-            ${textDiffs.map(item => `
-              <div class="diff-card">
-                <div class="diff-top">
-                  <strong>${escapeHtml(item.section || 'General')}</strong>
-                  ${badgeHtml(item.impact || 'low')}
-                </div>
-                <div class="diff-grid">
-                  <div>
-                    <div class="muted-label">Before</div>
-                    <p>${escapeHtml(item.before || '-')}</p>
-                  </div>
-                  <div>
-                    <div class="muted-label">After</div>
-                    <p>${escapeHtml(item.after || '-')}</p>
-                  </div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        ` : '<p>No key text differences found.</p>'}
-      </section>
-
-      <section class="report-block">
-        <h3>Image Comments / Visual Changes</h3>
-        ${imageChanges.length ? `
-          <div class="diff-list">
-            ${imageChanges.map(item => `
-              <div class="diff-card">
-                <div class="diff-top">
-                  <strong>${escapeHtml(item.area || 'Visual area')}</strong>
-                  ${badgeHtml(item.impact || 'low')}
-                </div>
-                <p>${escapeHtml(item.note || '-')}</p>
-              </div>
-            `).join('')}
-          </div>
-        ` : '<p>No image findings found.</p>'}
-        <div class="inline-columns">
-          <div>
-            <div class="muted-label">Visible / Extracted Image Comments</div>
-            ${toBulletList(imageComments, 'No visible image comments extracted.')}
-          </div>
-          <div>
-            <div class="muted-label">Buyer Comments</div>
-            ${toBulletList(buyerComments, 'No buyer comments extracted.')}
-          </div>
-        </div>
-      </section>
-
-      <section class="report-block">
-        <h3>Merged Follow-up Actions</h3>
-        ${toBulletList(uniqueItems([...textActions, ...imageActions]), 'No follow-up actions returned.')}
-      </section>
-    </article>
-  `;
-
-  state.latestReportHtml = html;
-  if (finalReportOut) finalReportOut.innerHTML = html;
-}
-
-async function runImageOnly() {
-  if (!state.A.pdf || !state.B.pdf) {
-    setActionStatus('Please upload both PDFs first');
-    return;
+// === SheetJS conditional row coloring helpers ===
+// 注意:SheetJS Community 不支援寫入豐富 cell style;這裡用 cell.s 配合
+// xlsx-js-style 才會生效,Community 版本會被忽略,不影響資料完整性。
+function colorRows(sheet, dataRowCount, colCount, getColorFn) {
+  for (let i = 0; i < dataRowCount; i++) {
+    const color = getColorFn(i);
+    if (!color) continue;
+    for (let c = 0; c < colCount; c++) {
+      const addr = XLSX.utils.encode_cell({ r: i + 1, c });
+      const cell = sheet[addr];
+      if (!cell) continue;
+      cell.s = cell.s || {};
+      cell.s.fill = { fgColor: { rgb: color }, patternType: 'solid' };
+    }
   }
+}
+function sevColorHex(cls) {
+  if (cls === 'sev-RED')    return 'FEE2E2';
+  if (cls === 'sev-YELLOW') return 'FEF3C7';
+  if (cls === 'sev-GREY')   return 'E5E7EB';
+  return null;
+}
 
+// ── Init ─────────────────────────────────────────────────
+async function fetchHealth() {
   try {
-    setActionStatus('Running image review...');
-    state.customerProfile = detectCustomerProfile(commentsInput?.value);
-    const pickA = pickPagesForProfile(state.customerProfile, state.A);
-    const pickB = pickPagesForProfile(state.customerProfile, state.B);
-    const imageData = await runMultiImageCompare(pickA, pickB);
-    renderFinalReport({ textData: null, imageData, measurementData: null });
-    setActionStatus('Image review ready');
-  } catch (error) {
-    console.error(error);
-    setActionStatus(`Image review failed: ${error.message}`);
-  }
+    const res = await fetch('/api/health');
+    const json = await res.json();
+    if (json?.data?.provider) els.providerName.textContent = json.data.provider;
+  } catch (_) { /* ignore */ }
 }
 
-async function runFullCompare() {
-  if (!state.A.pdf || !state.B.pdf) {
-    setActionStatus('Please upload both PDFs first');
-    return;
-  }
-
-  try {
-    setActionStatus('Preparing automatic comparison...');
-    state.customerProfile = detectCustomerProfile(commentsInput?.value);
-    const pickA = pickPagesForProfile(state.customerProfile, state.A);
-    const pickB = pickPagesForProfile(state.customerProfile, state.B);
-
-    let textA = buildTextForCompare(state.A, uniqueItems([...pickA.textPages, ...pickA.measurementPages]));
-    let textB = buildTextForCompare(state.B, uniqueItems([...pickB.textPages, ...pickB.measurementPages]));
-
-    if (!String(textA || '').trim()) textA = String(state.A.text || '').trim();
-    if (!String(textB || '').trim()) textB = String(state.B.text || '').trim();
-
-    if (!String(textA || '').trim() || !String(textB || '').trim()) {
-      throw new Error('Unable to extract usable text from one or both PDFs');
-    }
-
-    setActionStatus('Comparing text and measurement pages...');
-    const textData = await callJson('/.netlify/functions/compare-techpacks', {
-      textA,
-      textB,
-      comments: commentsInput?.value || ''
-    });
-
-    setActionStatus('Extracting measurement tables...');
-    const targetPagesA = pickA.measurementPages.length ? pickA.measurementPages : (state.A.pageScores || []).filter(p => p.measurementScore > 0 || /measurement chart|size chart|selected sizes/i.test(getPageText(state.A, p.page))).map(p => p.page).slice(0, 4);
-    const targetPagesB = pickB.measurementPages.length ? pickB.measurementPages : (state.B.pageScores || []).filter(p => p.measurementScore > 0 || /measurement chart|size chart|selected sizes/i.test(getPageText(state.B, p.page))).map(p => p.page).slice(0, 4);
-
-    let measurementRowsA = [];
-    let measurementRowsB = [];
-
-    try {
-      measurementRowsA = await extractMeasurementTableViaOCR('A', targetPagesA);
-      measurementRowsB = await extractMeasurementTableViaOCR('B', targetPagesB);
-    } catch (ocrError) {
-      console.warn('OCR extraction failed, fallback to raw text parsing', ocrError);
-    }
-
-    let measurementData = compareExtractedMeasurementRows(measurementRowsA, measurementRowsB);
-
-    if (!measurementData.rows.length) {
-      const parsedA = extractMeasurementLines(state.A, targetPagesA);
-      const parsedB = extractMeasurementLines(state.B, targetPagesB);
-      const parsedRows = compareParsedMeasurementRowsFuzzy(parsedA, parsedB);
-
-      if (parsedRows.length) {
-        measurementData = {
-          summary: `${parsedRows.length} measurement difference row(s) were identified by text measurement parsing.`,
-          changes: parsedRows.map(row => ({
-            before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
-            after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
-            impact: row.impact
-          })),
-          rows: parsedRows
-        };
-      }
-    }
-
-    if (!measurementData.rows.length) {
-      const fallbackRows = buildFallbackMeasurementRows(state.A, state.B, targetPagesA, targetPagesB);
-      if (fallbackRows.length) {
-        measurementData = {
-          summary: `${fallbackRows.length} measurement difference row(s) were identified by fallback text parsing.`,
-          changes: fallbackRows.map(row => ({
-            before: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueA}`,
-            after: `${row.pomName} | ${row.description} | ${row.size} | ${row.valueB} | ${row.status}`,
-            impact: row.impact
-          })),
-          rows: fallbackRows
-        };
-      }
-    }
-
-    let imageData = null;
-    let imageSkipped = false;
-    let imageError = '';
-
-    try {
-      setActionStatus('Comparing image pages...');
-      imageData = await runMultiImageCompare(pickA, pickB);
-    } catch (error) {
-      console.error(error);
-      imageSkipped = true;
-      imageError = error.message || 'Image review failed';
-    }
-
-    renderFinalReport({ textData, imageData, measurementData, imageSkipped, imageError });
-    setActionStatus('Final report ready');
-  } catch (error) {
-    console.error(error);
-    setActionStatus(`Report failed: ${error.message}`);
-  }
+function init() {
+  loadPrefs();
+  renderOutputModes();
+  resetProgress();
+  els.runBtn.addEventListener('click', runWorkflow);
+  els.exportBtn.addEventListener('click', exportExcel);
+  els.licenseKey.addEventListener('change', savePrefs);
+  els.styleNumber.addEventListener('change', savePrefs);
+  fetchHealth();
 }
 
-fileAInput?.addEventListener('change', e => extractPdfText(e.target.files?.[0], 'A'));
-fileBInput?.addEventListener('change', e => extractPdfText(e.target.files?.[0], 'B'));
-textASelect?.addEventListener('change', e => renderPagePreview('A', Number(e.target.value)));
-textBSelect?.addEventListener('change', e => renderPagePreview('B', Number(e.target.value)));
-bindDropzone('dropA', fileAInput, 'A');
-bindDropzone('dropB', fileBInput, 'B');
-compareBtn?.addEventListener('click', runFullCompare);
-compareBtn2?.addEventListener('click', runFullCompare);
-visionBtn?.addEventListener('click', runImageOnly);
-copySummaryBtn?.addEventListener('click', async () => {
-  if (!state.latestSummaryText) {
-    setActionStatus('No summary available to copy');
-    return;
-  }
-  try {
-    await navigator.clipboard.writeText(state.latestSummaryText);
-    setActionStatus('Summary copied');
-  } catch (error) {
-    console.error(error);
-    setActionStatus('Copy failed');
-  }
-});
-exportReportBtn?.addEventListener('click', () => window.print());
-
-setActionStatus('app.js version 2026-04-14-1643 raw-text-first');
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}

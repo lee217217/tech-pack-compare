@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://techpack-comparator.v2/schemas/commentArtifact.schema.json",
+  "title": "CommentArtifact",
+  "description": "整合一條客戶 COMMENT（不論來自表格欄位、PDF 圖像註釋、或外部 buyer note）。由 commentAgent 產出，由 summarizerAgent、前端 Comments & Images Tab 消費。同一則 comment 不會被拆，但同一段 buyer message 提到 3 個獨立議題會被拆成 3 筆。",
+
+  "type": "object",
+  "additionalProperties": false,
+
+  "required": [
+    "comment_id",
+    "source",
+    "comment_text",
+    "severity",
+    "confidence"
+  ],
+
+  "properties": {
+    "comment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50,
+      "description": "Agent 自動產生的穩定 id（建議 c_001 / c_002…）。用於 summary cross-reference。"
+    },
+
+    "source": {
+      "type": "string",
+      "enum": ["TEXT_FIELD", "IMAGE_ANNOTATION", "BUYER_COMMENT"],
+      "description": "TEXT_FIELD = PDF 表格內 COMMENT 欄位；IMAGE_ANNOTATION = PDF 圖像上的手寫 / 標註；BUYER_COMMENT = 由前端 textarea 額外輸入的買家郵件 / 訊息。"
+    },
+
+    "page_old": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 999,
+      "description": "在 Tech Pack A 出現的頁碼，可為 null（例如外部 buyer note）。"
+    },
+
+    "page_new": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 999,
+      "description": "在 Tech Pack B 出現的頁碼，可為 null。"
+    },
+
+    "comment_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "description": "Comment 原文（如為英文 / 簡中，agent 須保留原文，由 summarizer 才翻譯）。超過 2000 字會被 agent 截斷。"
+    },
+
+    "related_pom": {
+      "type": ["string", "null"],
+      "maxLength": 100,
+      "description": "若 comment 明確指向某個 POM（例如 “chest width 太緊”），填該 POM 名稱；否則 null。"
+    },
+
+    "severity": {
+      "type": "string",
+      "enum": ["INFO", "MINOR", "MAJOR", "CRITICAL"],
+      "description": "CRITICAL = 影響投產 / 出貨；MAJOR = 影響 sample；MINOR = 影響細節；INFO = 純參考。Agent 必須保守判斷，不確定就降一級。"
+    },
+
+    "language_detected": {
+      "type": "string",
+      "maxLength": 10,
+      "default": "en",
+      "description": "BCP-47 簡寫。常見值：en / zh-HK / zh-CN / zh-TW / ja / ko。"
+    },
+
+    "requires_human_review": {
+      "type": "boolean",
+      "default": false,
+      "description": "Agent 信心低 (< 0.6) 或語意模糊時設 true，前端會在該卡片右上顯示「需要人手確認」。"
+    },
+
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Agent 對這條 comment 解讀的可信度。"
+    }
+  }
+}

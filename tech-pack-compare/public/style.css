@@ -1,0 +1,58 @@
+/*
+  Path:     public/style.css
+  Purpose:  Tailwind 不能做的細部 — severity 標籤色、tab 動效、進度條 chip
+  Depends:  index.html (used inline)
+*/
+
+/* === Severity tag colors (Excel export 也用同一套對照表) === */
+.sev-RED    { background:#fee2e2; color:#991b1b; }
+.sev-YELLOW { background:#fef3c7; color:#92400e; }
+.sev-GREY   { background:#e5e7eb; color:#374151; }
+html.dark .sev-RED    { background:#7f1d1d33; color:#fca5a5; }
+html.dark .sev-YELLOW { background:#78350f33; color:#fcd34d; }
+html.dark .sev-GREY   { background:#37415133; color:#cbd5e1; }
+
+/* === Tab active state — JS toggles `tab-btn-active` === */
+.tab-btn-active {
+  border-color: #2563eb !important;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+html.dark .tab-btn-active { color:#60a5fa; }
+
+/* === Progress chip states === */
+.step-chip {
+  display:flex; align-items:center; justify-content:center;
+  padding: .5rem .25rem; border-radius:.375rem; font-weight:500;
+  border:1px solid; transition:all .15s;
+}
+.step-pending  { border-color:#cbd5e1; color:#64748b; background:transparent; }
+.step-running  { border-color:#2563eb; color:#1d4ed8; background:#dbeafe; animation: pulse 1.4s ease-in-out infinite; }
+.step-done     { border-color:#16a34a; color:#15803d; background:#dcfce7; }
+.step-skipped  { border-color:#94a3b8; color:#64748b; background:#f1f5f9; opacity:.7; }
+.step-failed   { border-color:#dc2626; color:#b91c1c; background:#fee2e2; }
+html.dark .step-pending { border-color:#475569; color:#94a3b8; }
+html.dark .step-running { border-color:#3b82f6; color:#93c5fd; background:#1e3a8a33; }
+html.dark .step-done    { border-color:#22c55e; color:#86efac; background:#14532d33; }
+html.dark .step-skipped { border-color:#475569; color:#94a3b8; background:#1e293b66; }
+html.dark .step-failed  { border-color:#ef4444; color:#fca5a5; background:#7f1d1d33; }
+
+@keyframes pulse {
+  0%, 100% { opacity:1; }
+  50%      { opacity:.65; }
+}
+
+/* === Data tables (Tab content) === */
+.data-table { width:100%; font-size:.8125rem; border-collapse:collapse; }
+.data-table th, .data-table td {
+  text-align:left; padding:.5rem .625rem;
+  border-bottom:1px solid #e2e8f0;
+}
+html.dark .data-table th, html.dark .data-table td { border-bottom-color:#334155; }
+.data-table thead th {
+  font-weight:600; background:#f8fafc; color:#475569;
+  position:sticky; top:0;
+}
+html.dark .data-table thead th { background:#0f172a; color:#94a3b8; }
+.data-table tbody tr:hover { background:#f8fafc; }
+html.dark .data-table tbody tr:hover { background:#1e293b66; }

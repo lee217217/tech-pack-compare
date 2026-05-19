@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://techpack-comparator.v2/schemas/qaReview.schema.json",
+  "title": "QAReview",
+  "description": "由 qaReviewAgent 在所有其他 agent 完成後執行，檢查 artifacts 的完整性與幻覺風險。由 coordinatorAgent 寫入 workflowResult.data.artifacts.qa_review，由前端在報告頂部顯示 banner（pass / warn / fail）。注意：FAIL 不會 block 報告輸出，僅警示使用者人手複核。",
+
+  "type": "object",
+  "additionalProperties": false,
+
+  "required": [
+    "status",
+    "hallucination_risk",
+    "issues",
+    "artifact_completeness",
+    "reviewed_at"
+  ],
+
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["PASS", "WARN", "FAIL"],
+      "description": "PASS = 全部 artifact 完整且通過幻覺檢測；WARN = 有部分缺漏或低 confidence 項；FAIL = 偵測到明確幻覺或結構錯亂，強烈建議重跑。"
+    },
+
+    "hallucination_risk": {
+      "type": "string",
+      "enum": ["NONE", "LOW", "MEDIUM", "HIGH"],
+      "description": "幻覺風險評估。判定依據：confidence 分佈、是否有 measurement value 在原文找不到、是否有 POM 名稱在 extractor artifact 內不存在等。"
+    },
+
+    "issues": {
+      "type": "array",
+      "maxItems": 30,
+      "description": "具體議題清單。每筆指出哪個 agent 的哪個欄位有問題以及建議處理方式。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "agent", "message"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["INFO", "WARN", "ERROR"],
+            "description": "INFO = 純提醒；WARN = 建議人手複核；ERROR = 強烈建議重跑該 agent。"
+          },
+          "agent": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "出問題的 agent 名稱，例如 measurementAgent / commentAgent / imageAgent / summarizerAgent。"
+          },
+          "field": {
+            "type": ["string", "null"],
+            "maxLength": 100,
+            "description": "出問題的具體欄位路徑，例如 measurement_changes[3].new_value。"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "問題描述（繁中）。"
+          },
+          "suggestion": {
+            "type": ["string", "null"],
+            "maxLength": 500,
+            "description": "建議行動（繁中），例如「請人手對照原 PDF 第 5 頁尺寸表」。"
+          }
+        }
+      }
+    },
+
+    "artifact_completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["measurement", "comment", "image", "bom", "summary"],
+      "description": "五類 artifact 是否齊備（即使為空陣列也算齊備；只有當 agent error / skipped 才算 false）。",
+      "properties": {
+        "measurement": { "type": "boolean", "description": "measurementAgent 是否成功產出。" },
+        "comment":     { "type": "boolean", "description": "commentAgent 是否成功產出。" },
+        "image":       { "type": "boolean", "description": "imageAgent 是否成功產出。" },
+        "bom":         { "type": "boolean", "description": "bomAgent 是否成功產出。" },
+        "summary":     { "type": "boolean", "description": "summarizerAgent 是否成功產出。" }
+      }
+    },
+
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40,
+      "description": "QA review 完成時間（UTC，ISO 8601）。"
+    }
+  }
+}

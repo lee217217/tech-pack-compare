@@ -1,13 +1,40 @@
+# =====================================================================
+# netlify.toml — AI Tech Pack Comparator v2
+# =====================================================================
+
 [build]
-  publish = "public"
+  publish  = "public"
   functions = "netlify/functions"
 
 [functions]
   node_bundler = "esbuild"
+  # All functions share the src/ folder
+  included_files = ["src/**"]
 
+# -----------------------------
+# Security headers
+# -----------------------------
 [[headers]]
   for = "/*"
   [headers.values]
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    # CSP: allow Tailwind CDN + PDF.js CDN only.
+    # Update if you add more CDN.
+    # connect-src 只允許 self + Perplexity Sonar Pro endpoint（v2 唯一啟用 provider）。
+    # 其他 provider domain 已移除以縮小 attack surface（KI-008）。
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; img-src 'self' data: blob:; connect-src 'self' https://api.perplexity.ai; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
+
+# Long cache for static assets
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=300, must-revalidate"
+
+# Friendly URL rewrites (optional)
+[[redirects]]
+  from = "/api/*"
+  to   = "/.netlify/functions/:splat"
+  status = 200

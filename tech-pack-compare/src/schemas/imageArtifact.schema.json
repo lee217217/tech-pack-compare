@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://techpack-comparator.v2/schemas/imageArtifact.schema.json",
+  "title": "ImageArtifact",
+  "description": "由 imageAgent 用 vision 模型比對兩張 PDF 頁圖像產生的一筆差異。每筆代表「同一概念位置」在 A vs B 的視覺差異（例如同一個版型 sketch 上的領口變化）。由 summarizerAgent / 前端 Comments & Images Tab 消費。",
+
+  "type": "object",
+  "additionalProperties": false,
+
+  "required": [
+    "image_id",
+    "region",
+    "change_type",
+    "diff_summary",
+    "confidence"
+  ],
+
+  "properties": {
+    "image_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50,
+      "description": "Agent 自動產生，例如 img_001。"
+    },
+
+    "page_old": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 999,
+      "description": "Tech Pack A 中對應的頁碼。"
+    },
+
+    "page_new": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 999,
+      "description": "Tech Pack B 中對應的頁碼。"
+    },
+
+    "region": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "w", "h"],
+      "description": "差異區域 bounding box，以 page B 為主，採相對座標 (0-1) 避免 DPI 差異。",
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1, "description": "左上角 X (0-1)。" },
+        "y": { "type": "number", "minimum": 0, "maximum": 1, "description": "左上角 Y (0-1)。" },
+        "w": { "type": "number", "minimum": 0, "maximum": 1, "description": "寬度 (0-1)。" },
+        "h": { "type": "number", "minimum": 0, "maximum": 1, "description": "高度 (0-1)。" }
+      }
+    },
+
+    "change_type": {
+      "type": "string",
+      "enum": ["STYLE", "CONSTRUCTION", "TRIM", "PRINT", "EMBROIDERY", "OTHER"],
+      "description": "STYLE = 版型 / silhouette；CONSTRUCTION = 車縫 / 結構；TRIM = 配料（拉鏈、釦子、織帶）；PRINT = 印花；EMBROIDERY = 繡花；OTHER = 其他（例如 label placement）。"
+    },
+
+    "before_desc": {
+      "type": ["string", "null"],
+      "maxLength": 500,
+      "description": "Tech Pack A 該區域的視覺描述（agent 用自然語言寫，繁中）。找不到對應區域時為 null（表示新增）。"
+    },
+
+    "after_desc": {
+      "type": ["string", "null"],
+      "maxLength": 500,
+      "description": "Tech Pack B 該區域的視覺描述（繁中）。若該區域在 B 被移除則為 null。"
+    },
+
+    "diff_summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "一句話總結這個視覺差異（繁中），例如「領口由圓領改為 V 領，加深約 2cm」。"
+    },
+
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Agent 對這筆視覺差異的可信度。"
+    },
+
+    "near_size_table": {
+      "type": "boolean",
+      "default": false,
+      "description": "該頁是否緊接尺寸表後（image extraction strategy 偵測）。Sales 通常最關心這類圖像。"
+    }
+  }
+}
